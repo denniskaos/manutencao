@@ -1475,7 +1475,7 @@ function viewStock(){
     <button class="btn pri" onclick="openMov('compra')">+ Compra</button>
     <button class="btn" onclick="openMov('carga')">🚐 Carga p/ carrinha</button>
     <button class="btn" onclick="openMov('devolucao')">↩️ Devolução</button>
-    <button class="btn" onclick="openMov('transferencia')">⇄ Transferência</button>
+    <button class="btn" onclick="openMov('transferencia')">📦 Carregar Arm. C5 / ⇄ Transferência</button>
     <button class="btn" onclick="openMov('ajuste')">± Ajuste</button>
   </div>
   ${baixos.length ? `<div class="note" style="background:var(--red-bg,#fdecea);color:var(--red,#b42318)">⚠️ <b>Repor no armazém:</b> ${baixos.map(a => `${esc(a.nome)} (${numTxt((Q.principal || {})[a.codigo] || 0)} / mín. ${numTxt(Number(a.minimo)||0)})`).join(" · ")}</div>` : ""}
@@ -1521,7 +1521,8 @@ function openMov(tipo, codigo){
   if(tipo === "compra") campos = `<label class="f"><span>Entra em</span><select id="mv_dest">${opts(arm, "principal")}</select></label>
     <div class="grid2"><label class="f"><span>Fornecedor</span><input id="mv_forn" list="dl_forn" placeholder="Opcional"><datalist id="dl_forn">${[...new Set(S.stk.mov.map(m => m.fornecedor).filter(Boolean))].map(f => `<option value="${esc(f)}">`).join("")}</datalist></label>
     <label class="f"><span>Documento / fatura</span><input id="mv_doc" placeholder="Opcional"></label></div>`;
-  if(tipo === "carga") campos = `<div class="grid2"><label class="f"><span>Sai de</span><select id="mv_orig">${opts(arm, "principal")}</select></label><label class="f"><span>Para a carrinha</span><select id="mv_dest">${opts(car)}</select></label></div>`;
+  if(tipo === "carga") campos = `<div class="grid2"><label class="f"><span>Sai de</span><select id="mv_orig">${opts(arm, "principal")}</select></label><label class="f"><span>Para a carrinha</span><select id="mv_dest" onchange="if(this.value==='car5')document.getElementById('mv_orig').value='c5arm'; else if(document.getElementById('mv_orig').value==='c5arm')document.getElementById('mv_orig').value='principal'">${opts(car)}</select></label></div>
+    <div style="font-size:13px;color:var(--muted);margin:-4px 0 10px">A Carrinha 5 abastece-se a partir do Armazém C5.</div>`;
   if(tipo === "devolucao") campos = `<div class="grid2"><label class="f"><span>Da carrinha</span><select id="mv_orig">${opts(car)}</select></label><label class="f"><span>Volta para</span><select id="mv_dest">${opts(arm, "principal")}</select></label></div>`;
   if(tipo === "transferencia") campos = `<div class="grid2"><label class="f"><span>De</span><select id="mv_orig">${opts(locs, "principal")}</select></label><label class="f"><span>Para</span><select id="mv_dest">${opts(locs, "c5arm")}</select></label></div>`;
   if(tipo === "ajuste") campos = `<div class="grid2"><label class="f"><span>Local</span><select id="mv_loc">${opts(locs, "principal")}</select></label><label class="f"><span>Ajuste</span><select id="mv_sinal"><option value="+">+ Acrescentar</option><option value="-">− Retirar</option></select></label></div>`;
