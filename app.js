@@ -431,7 +431,7 @@ function otRow(o, hideCondo){
   const est = o.estado === "concluida" ? '<span class="badge b-green">Concluída</span>' : o.estado === "curso" ? '<span class="badge b-blue">Em curso</span>' : "";
   const sub = [hideCondo ? "" : cName(condoOf(o)), IS_ADMIN ? (o.tecnico ? nm(o.tecnico) : (gecResp(o) ? "Gecond: " + gecResp(o) : "Por atribuir")) : ""].filter(Boolean).join(" · ");
   const pr = o.prioridade === "alta" ? '<b style="color:var(--red)">⚠ </b>' : "";
-  return `<div class="prow" onclick="openOt('${o.id}')"><span class="mono pd">${esc(numOt(o) || "")}</span><span class="pn">${pr}${esc(o.titulo)}${isExt(o) ? " 🛗" : ""}<small>${esc(sub)}</small></span>${est}<span class="badge ${late ? "b-red" : ""}" style="white-space:nowrap">${o.estado==="concluida" ? fmtDate(o.concluida) : fmtDate(o.data)}</span></div>`;
+  return `<div class="prow" onclick="openOt('${o.id}')"><span class="mono pd">${esc(numOt(o) || "")}</span><span class="pn">${pr}${isTrab(o) ? "🔧 " : ""}${esc(o.titulo)}${isExt(o) ? " 🛗" : ""}<small>${esc(sub)}</small></span>${est}<span class="badge ${late ? "b-red" : ""}" style="white-space:nowrap">${o.estado==="concluida" ? fmtDate(o.concluida) : fmtDate(o.data)}</span></div>`;
 }
 let grpOpen = new Set(), listMax = 50;
 function grpBlock(key, label, sub, items, extra){
@@ -499,8 +499,8 @@ function viewInicio(){
     <h3>Para hoje e em atraso</h3>
     <div class="list">${hoje.length ? hoje.map(o=>otItem(o)).join("") : emptyBox("Não tem ordens para hoje. 👍")}</div>
     ${prox.length?`<h3>Próximas</h3><div class="list">${prox.slice(0,10).map(o=>otItem(o)).join("")}</div>`:""}
-    <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Novo trabalho</button></div>
-    <p style="font-size:13px;color:var(--muted);margin-top:6px">Para manutenções, reparações ou avarias que encontre no local sem ordem do escritório: registe aqui, junte o material, as horas e as fotos e conclua.</p>`;
+    <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="openTrabalho()">+ Novo trabalho</button></div>
+    <p style="font-size:13px;color:var(--muted);margin-top:6px">Fez um trabalho num prédio? Registe-o aqui com o material, as horas e as fotos.</p>`;
   }
   const ots = Object.values(S.ots);
   const porAtribuir = sortOts(ots.filter(o => o.estado !== "concluida" && !o.tecnico));
@@ -516,6 +516,9 @@ function viewInicio(){
     ${statCard(ots.filter(o=>o.estado==="curso").length, "Em curso", "techF='';otFilter='curso';go('ordens')")}
     ${statCard(atrasadas, "Preventivas em atraso", "go('prev')", true)}
   </div>
+  ${(() => { const desde = addDays(t, -7); const tr = Object.values(S.ots).filter(o => isTrab(o) && o.estado === "concluida" && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
+    if(!tr.length) return ""; window.__grp = window.__grp || {};
+    return `<h3>🔧 Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button></div>`); })()}
   ${porAtribuir.length ? (() => { const g = {}; for(const o of porAtribuir){ const k = isExt(o) ? "Elevadores / empresa externa" : (gecResp(o) || "Sem indicação"); (g[k] ||= []).push(o); }
     window.__grp = {};
     return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
@@ -534,13 +537,20 @@ function viewInicio(){
   <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button><button class="btn" onclick="openBatchPrint()">🖨️ Imprimir relatórios da semana</button></div>`;
 }
 
+// Trabalho registado por um técnico no local (não veio do escritório nem do Gecond).
+const isTrab = o => !!o.criadoPor && (S.equipa[o.criadoPor] || {}).papel === "tec" && !(o.descricao || "").startsWith("Ocorrência Gecond");
+let otOrig = "";
 function viewOrdens(){
   const f = {ativas:o=>o.estado!=="concluida", aberta:o=>o.estado==="aberta", curso:o=>o.estado==="curso", concluida:o=>o.estado==="concluida", todas:()=>true}[otFilter] || (()=>true);
   const tf = !IS_ADMIN || !techF ? () => true : techF === "-" ? o => !o.tecnico : o => o.tecnico === techF;
-  const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
+  const fo = !IS_ADMIN || !otOrig ? () => true : otOrig === "trab" ? isTrab : o => !isTrab(o);
+  const base = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF);
+  const nTrab = base.filter(isTrab).length;
+  const list = otsSorted().filter(f).filter(tf).filter(fo).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
+  ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","📋 Ocorrências", base.length - nTrab],["trab","🔧 Trabalhos dos técnicos", nTrab]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -1022,7 +1032,7 @@ function openCondo(id, startSub){
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
       ${c.fracoes?`<dt>Frações</dt><dd>${esc(c.fracoes)}</dd>`:""}
       ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl></div>
-      <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="editOt(null,'${id}')">+ ${IS_ADMIN?"Nova ordem":"Novo trabalho"}</button></div>
+      <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="${IS_ADMIN ? `editOt(null,'${id}')` : `openTrabalho('${id}')`}">+ ${IS_ADMIN?"Nova ordem":"Novo trabalho"}</button></div>
       <div class="seg" style="margin-bottom:10px">
         <button class="${sub==="ordens"?"on":""}" onclick="condoSub('ordens')">Ordens${pend.length?` (${pend.length})`:""}</button>
         ${IS_ADMIN?`<button class="${sub==="prev"?"on":""}" onclick="condoSub('prev')">Preventiva (${plans.length})</button>`:""}
@@ -1766,6 +1776,54 @@ async function saveMov(tipo){
   if(origem){ const Q = stockQty(); const neg = movLines.filter(x => ((Q[origem] || {})[x.c] || 0) < 0); if(neg.length) toast("Atenção: " + locNome(origem) + " ficou com stock negativo em " + neg.map(x => (S.mat[x.c] || {}).nome).join(", ")); else toast("Guardado."); } else toast("Guardado.");
   closeSheet(); render();
 }
+/* ---------- novo trabalho feito no local (formulário único) ---------- */
+let twLines = [], twFotos = [];
+function openTrabalho(cid){
+  twLines = []; twFotos = [];
+  const temExtra = !Object.keys(S.ots).length || Object.values(S.ots).some(o => "extra" in o);
+  openSheet("Novo trabalho", `
+    ${condoPicker(cid || "")}
+    <label class="f"><span>O que foi feito *</span><input id="tw_tit" placeholder="Ex.: Manutenção geral, troca de lâmpadas no 3º"></label>
+    <label class="f"><span>Zona / fração</span><input id="tw_zona" placeholder="Ex.: escadas, garagem -1, 2º esq."></label>
+    <div class="panel"><b>Material usado</b><div id="tw_lines" class="parts" style="margin-top:6px"></div>
+      ${matList().length ? `<select id="tw_sel" class="search" style="margin:8px 0 0" onchange="document.getElementById('tw_nome').style.display=this.value==='__outro'?'':'none'"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
+      <div class="addpart"><input id="tw_nome" placeholder="Nome do material" style="${matList().length ? "display:none" : ""}"><input id="tw_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addTwLine()"><button class="btn sm" onclick="addTwLine()">Adicionar</button></div></div>
+    <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
+    <div id="tw_tempo">
+      <div class="panel"><b>Tempo gasto</b><div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><span style="display:flex;gap:6px;align-items:center"><input id="tw_h" type="number" min="0" value="0" style="width:64px;border:1px solid var(--line);border-radius:10px;padding:8px"> h <input id="tw_m" type="number" min="0" max="59" step="5" value="0" style="width:64px;border:1px solid var(--line);border-radius:10px;padding:8px"> min</span>
+        <span style="display:flex;gap:6px;align-items:center;margin-left:auto">Deslocações <input id="tw_d" type="number" min="0" value="1" style="width:56px;border:1px solid var(--line);border-radius:10px;padding:8px"></span></div></div>
+      ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
+    </div>
+    <label class="f"><span>Notas</span><textarea id="tw_notas" placeholder="Detalhes do que foi feito, o que fica por fazer…"></textarea></label>
+    <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer">📷 Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
+    <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)">💾 Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)">✅ Concluir trabalho</button></div>`);
+  drawTwLines();
+}
+function drawTwLines(){ const el = $("#tw_lines"); if(!el) return; el.innerHTML = twLines.map((x, i) => `<div class="part"><span class="n">${esc(x.n)}</span><span class="mono">× ${numTxt(x.q)}</span><button class="btn sm" onclick="twLines.splice(${i},1);drawTwLines()">✕</button></div>`).join(""); }
+function addTwLine(){
+  const sel = val("tw_sel"); const q = parseFloat(String(val("tw_qtd")).replace(",", ".")) || 1;
+  if(sel && sel !== "__outro"){ const m = S.mat[sel]; if(m) twLines.push({ c: m.codigo, n: m.nome, q }); }
+  else { const n = val("tw_nome"); if(!n){ toast("Escolha o material."); return; } twLines.push({ n, q }); $("#tw_nome").value = ""; }
+  if($("#tw_sel")) $("#tw_sel").value = ""; if($("#tw_nome") && matList().length) $("#tw_nome").style.display = "none"; $("#tw_qtd").value = ""; drawTwLines();
+}
+async function saveTrabalho(concluir){
+  const cid = val("f_condo"), tit = val("tw_tit");
+  if(!cid || !tit){ toast("Escolha o prédio e escreva o que foi feito."); return; }
+  if(val("tw_qtd") || (val("tw_sel") && val("tw_sel") !== "__outro") || val("tw_nome")) addTwLine();
+  const so = !!($("#tw_so") || {}).checked;
+  const tempo = so ? 0 : (parseInt(val("tw_h")) || 0) * 60 + (parseInt(val("tw_m")) || 0);
+  if(concluir && !so && !tempo && !twLines.length){ toast("Indique o tempo gasto ou o material usado."); return; }
+  const exBtn = document.querySelector("#tw_extra button.on"); const extra = so || !exBtn ? "" : exBtn.dataset.k;
+  const t = today(), now = nowIso();
+  const o = { id: newId(), titulo: tit, condoId: cid, equipId: "", zona: val("tw_zona"), tecnico: ME, tipo: "corretiva", prioridade: "media", estado: concluir ? "concluida" : "curso",
+    data: t, descricao: "", solicitante: "", checklist: [], pecas: twLines.slice(), fotos: [], notas: val("tw_notas"), tempo,
+    deslocacoes: so ? 0 : Math.max(0, parseInt(val("tw_d")) || 0), soMaterial: so, criada: t, criadaEm: now, criadoPor: ME, atribuida: t, atribuidaEm: now, atribuidoPor: ME,
+    ...(concluir ? { concluida: t, concluidaEm: now, concluidoPor: ME } : {}), ...(Object.values(S.ots).some(x => "extra" in x) || extra ? { extra } : {}) };
+  const fotos = twFotos.slice();
+  put("ots", o); closeSheet();
+  toast(concluir ? "Trabalho concluído e registado." : "Trabalho guardado — pode acabá-lo depois.");
+  if(fotos.length){ await new Promise(r => setTimeout(r, 800)); await addFotos(o.id, { files: fotos, set value(v){} }); }
+}
 /* ---------- saída direta do armazém para um prédio ---------- */
 // Cria uma ordem concluída "Entrega de material" (só material) atribuída a quem regista;
 // sem carrinha associada, o material sai do armazém principal e entra nos relatórios do prédio.
@@ -1779,7 +1837,7 @@ function openSaidaDireta(){
     <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${today()}"></label>
     <label class="f"><span>Quem levou *</span><input id="mv_quem" placeholder="Nome de quem levantou o material"></label></div>
     <label class="f"><span>Observações</span><input id="mv_obs" placeholder="Opcional"></label>
-    <div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>
+    ${VE_STOCK() ? `<div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>` : ""}
     <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveSaidaDireta()">Registar saída</button></div>`);
   drawMovLines();
 }
@@ -1833,13 +1891,13 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
-Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
+Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openSaidaDireta, saveSaidaDireta, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openTrabalho, addTwLine, drawTwLines, saveTrabalho, openSaidaDireta, saveSaidaDireta, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
