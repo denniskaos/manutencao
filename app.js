@@ -433,7 +433,7 @@ function viewInicio(){
 function viewOrdens(){
   const f = {ativas:o=>o.estado!=="concluida", aberta:o=>o.estado==="aberta", curso:o=>o.estado==="curso", concluida:o=>o.estado==="concluida", todas:()=>true}[otFilter] || (()=>true);
   const tf = !IS_ADMIN || !techF ? () => true : techF === "-" ? o => !o.tecnico : o => o.tecnico === techF;
-  const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
+  const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
   return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
