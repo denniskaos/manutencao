@@ -89,6 +89,10 @@ let pushTimer = null;
 function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.functions.invoke("enviar-push").catch(() => {}), 800); }
 
 /* ---------- arranque e sessão ---------- */
+// iPhone: impedir zoom com dois dedos e com duplo toque (a app fica do tamanho do ecrã).
+for(const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
 async function start(){
   if(!configured){ mode = "config"; render(); return; }
   if("serviceWorker" in navigator){
