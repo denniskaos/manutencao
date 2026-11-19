@@ -46,7 +46,7 @@ header .row{display:flex;align-items:center;justify-content:space-between;gap:10
 header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:9px}
 header h1 .dot{width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block}
 .sync{font-size:12px;color:#b8c2c8}
-main{max-width:860px;margin:0 auto;padding:16px 14px calc(150px + env(safe-area-inset-bottom))}
+main{max-width:860px;margin:0 auto;padding:16px 14px calc(96px + env(safe-area-inset-bottom))}
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:center;z-index:5}
 nav .in{display:flex;width:100%;max-width:860px}
 nav button{flex:1;border:0;background:none;padding:10px 4px 12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
@@ -128,7 +128,7 @@ table.stk tr:hover td{background:#fbf8f2}
 /* sheet */
 .scrim{position:fixed;inset:0;background:rgba(20,26,30,.45);z-index:20;display:none;align-items:flex-end;justify-content:center;padding-top:calc(env(safe-area-inset-top) + 8px)}
 .scrim.open{display:flex}
-.sheet{background:var(--bg);width:100%;max-width:640px;max-height:100%;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:16px 16px 0 0;padding:0 0 calc(110px + env(safe-area-inset-bottom))}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:100%;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:16px 16px 0 0;padding:0 0 calc(16px + env(safe-area-inset-bottom))}
 @media(min-width:700px){.scrim{align-items:center;padding:24px}.sheet{border-radius:16px;max-height:88vh;padding-bottom:24px}}
 .sheet .top{position:sticky;top:0;background:var(--bg);padding:14px 18px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--line);z-index:1}
 .sheet .top h4{margin:0;font-size:17px}
@@ -214,7 +214,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=46"></script>
-<script type="module" src="app.js?v=46"></script>
+<script src="config.js?v=47"></script>
+<script type="module" src="app.js?v=47"></script>
 </body>
 </html>
