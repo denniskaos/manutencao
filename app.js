@@ -1883,7 +1883,7 @@ async function saveSaidaDireta(){
   const d = val("mv_data") || today(); const obs = val("mv_obs");
   const pecas = movLines.map(x => ({ c: x.c, n: (S.mat[x.c] || {}).nome || x.c, q: x.q }));
   const o = { id: newId(), titulo: "Entrega de material", condoId: cid, equipId: "", zona: "", tecnico: ME, tipo: "corretiva", prioridade: "media", estado: "concluida",
-    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
+    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + ".\nEntregue por " + nm(ME) + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
     deslocacoes: 0, soMaterial: true, criada: today(), criadaEm: nowIso(), criadoPor: ME, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME,
     concluida: d, concluidaEm: nowIso(), concluidoPor: ME };
   put("ots", o);
