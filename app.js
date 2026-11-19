@@ -369,38 +369,52 @@ function renderNav(){
 }
 /* ---------- meteorologia (IPMA, dados abertos) ---------- */
 const WX = { 1:"☀️", 2:"🌤️", 3:"⛅", 4:"☁️", 5:"🌥️", 6:"🌦️", 7:"🌦️", 8:"🌧️", 9:"🌧️", 10:"🌦️", 11:"🌧️", 12:"🌧️", 13:"🌦️", 14:"🌧️", 15:"🌦️", 16:"🌫️", 17:"🌫️", 18:"🌨️", 19:"⛈️", 20:"⛈️", 21:"🌨️", 22:"❄️", 23:"⛈️", 24:"☁️", 25:"🌥️", 26:"🌫️", 27:"☁️", 28:"🌨️", 29:"🌨️", 30:"🌨️" };
-const METEO_LOCAIS = [["1131200", "Porto"], ["1030300", "Braga"]];
-let meteo = null, meteoLocal = (() => { try{ return localStorage.getItem("meteoLocal") || "1131200"; }catch(e){ return "1131200"; } })();
+let meteo = null, meteoPos = null, meteoNegado = false;
+const lsGet = k => { try{ return JSON.parse(localStorage.getItem(k) || "null"); }catch(e){ return null; } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+function obterPosicao(){
+  return new Promise(res => {
+    if(!navigator.geolocation){ res(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => { meteoNegado = false; res({ lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }); },
+      e => { meteoNegado = e && e.code === 1; res(null); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 30 * 60 * 1000 });
+  });
+}
 async function loadMeteo(force){
+  const c = lsGet("meteo2");
+  if(!force && c && Date.now() - c.t < 30 * 60 * 1000){ meteo = c.d; meteoPos = c.pos; renderWho(); return; }
+  if(c && !meteo){ meteo = c.d; meteoPos = c.pos; renderWho(); }
+  const pos = await obterPosicao(); meteoPos = pos || null;
   try{
-    if(!force){ const c = JSON.parse(localStorage.getItem("meteo:" + meteoLocal) || "null"); if(c && Date.now() - c.t < 30 * 60 * 1000){ meteo = c.d; renderWho(); return; } }
-  }catch(e){}
-  try{
-    const { data, error } = await sb.functions.invoke("meteo", { body: { local: meteoLocal } });
+    const { data, error } = await sb.functions.invoke("meteo", { body: pos || {} });
     if(error || !data || data.erro || !data.dias) throw (error || new Error(data && data.erro));
-    meteo = data; try{ localStorage.setItem("meteo:" + meteoLocal, JSON.stringify({ t: Date.now(), d: data })); }catch(e){}
+    meteo = data; lsSet("meteo2", { t: Date.now(), d: data, pos: meteoPos });
     renderWho(); if(sheetRefresh && document.getElementById("wxSheet")) sheetRefresh();
   }catch(e){ console.warn("meteo", e); }
 }
 function meteoHoje(){ if(!meteo || !meteo.dias) return null; const t = today(); return meteo.dias.find(d => d.data === t) || meteo.dias[0]; }
 function meteoChip(){
   const d = meteoHoje(); if(!d) return "";
-  return `<button class="wx" onclick="openMeteo()" aria-label="Meteorologia" title="${esc(d.desc)} · ${esc(meteo.local)}">${WX[d.tipo] || "🌡️"}<b>${Math.round(d.tMax)}°</b>${d.prob >= 50 ? `<small>💧${Math.round(d.prob)}%</small>` : ""}</button>`;
+  const a = meteo.agora; const tipo = a ? a.tipo : d.tipo; const temp = a ? a.temp : d.tMax; const prob = a ? a.prob : d.prob;
+  return `<button class="wx" onclick="openMeteo()" aria-label="Meteorologia" title="${esc(a ? a.desc : d.desc)} · ${esc(meteo.local)}">${WX[tipo] || "🌡️"}<b>${Math.round(temp)}°</b>${prob >= 50 ? `<small>💧${Math.round(prob)}%</small>` : ""}</button>`;
 }
 const DIAS_SEM = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 function openMeteo(){
   const draw = () => {
     if(!meteo) return `<div id="wxSheet">${emptyBox("A carregar a previsão…")}</div>`;
-    const t = today(); const am = addDays(t, 1);
-    return `<div id="wxSheet"><div class="chips">${METEO_LOCAIS.map(([id, n]) => `<button class="chip ${meteoLocal===id?"on":""}" onclick="setMeteoLocal('${id}')">${n}</button>`).join("")}</div>
+    const t = today(); const am = addDays(t, 1); const a = meteo.agora;
+    const ondeTxt = meteoPos ? `📍 Pela sua localização${meteo.km != null ? ` (estação de previsão a ~${meteo.km} km)` : ""}` : meteoNegado ? "📍 A localização não está autorizada — a mostrar o Porto. Para usar a sua zona, autorize a localização para esta app nas definições do telemóvel." : "📍 Sem localização — a mostrar o Porto.";
+    return `<div id="wxSheet">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><span style="font-size:44px;line-height:1">${WX[a ? a.tipo : meteoHoje().tipo] || "🌡️"}</span><div><div style="font-size:22px;font-weight:700">${esc(meteo.local)}${a ? ` · ${Math.round(a.temp)}°` : ""}</div><div style="color:var(--muted);font-size:14px">${esc(a ? a.desc : meteoHoje().desc)}${a && a.prob >= 0 ? ` · 💧 ${Math.round(a.prob)}%` : ""}</div></div></div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${ondeTxt} <button class="btn sm" onclick="loadMeteo(true)" style="margin-left:4px">Atualizar</button></div>
       <div class="plist" style="border:1px solid var(--line);border-radius:var(--r);margin:0;background:var(--card)">${meteo.dias.map(d => { const nome = d.data === t ? "Hoje" : d.data === am ? "Amanhã" : DIAS_SEM[new Date(d.data + "T12:00:00").getDay()];
         return `<div class="prow" style="cursor:default"><span style="font-size:28px;line-height:1">${WX[d.tipo] || "🌡️"}</span><span class="pn"><b>${nome}</b> <span style="color:var(--muted);font-size:13px">${fmtDate(d.data).slice(0, 5)}</span><small>${esc(d.desc)}${d.vento ? " · vento " + esc(d.vento) : ""}</small></span><span style="text-align:right;white-space:nowrap"><b>${Math.round(d.tMax)}°</b> <span style="color:var(--muted)">${Math.round(d.tMin)}°</span><br><span style="font-size:13px;color:${d.prob >= 50 ? "var(--blue)" : "var(--muted)"}">💧 ${Math.round(d.prob)}%</span></span></div>`; }).join("")}</div>
       ${meteo.dias.slice(0, 3).some(d => d.prob >= 70) ? `<div class="note" style="margin-top:10px">🌧️ Chuva provável nos próximos dias — bom momento para verificar caleiros, ralos e infiltrações; trabalhos em telhados e terraços ficam para dias secos.</div>` : ""}
-      <p style="font-size:12px;color:var(--muted);margin-top:10px">Fonte: IPMA (dados abertos) · previsão para a cidade de ${esc(meteo.local)}; no interior pode variar ligeiramente.${meteo.atualizado ? " Atualizado: " + esc(String(meteo.atualizado).replace("T", " ").slice(0, 16)) + "." : ""}</p></div>`;
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">Fonte: ${esc(meteo.fonte || "IPMA")}. A localização serve só para escolher o concelho mais próximo; não fica guardada.${meteo.atualizado ? " Atualizado: " + esc(String(meteo.atualizado).replace("T", " ").slice(0, 16)) + "." : ""}</p></div>`;
   };
   openSheet("Meteorologia", draw(), () => { const b = document.querySelector("#sheet .body"); if(b && document.getElementById("wxSheet")) b.innerHTML = draw(); });
 }
-function setMeteoLocal(id){ meteoLocal = id; try{ localStorage.setItem("meteoLocal", id); }catch(e){} meteo = null; if(sheetRefresh) sheetRefresh(); loadMeteo(); }
 function renderWho(){
   const el = $("#who");
   if(mode !== "ok"){ el.innerHTML = ""; document.title = "Manutenção"; return; }
@@ -1791,7 +1805,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openMeteo, setMeteoLocal, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
