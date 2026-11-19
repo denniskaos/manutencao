@@ -356,7 +356,7 @@ const ICONS = {
 const tabsFor = () => IS_ADMIN
   ? [["inicio","Início"],["ordens","Ordens"],["prev","Preventiva"],["condos","Condomínios"],...(VE_STOCK() ? [["stock","Stock"]] : []),["equipa","Equipa"]]
   : [["inicio","Hoje"],["ordens","As minhas"],["condos","Condomínios"]];
-function go(t){ tab = t; q = ""; render(); window.scrollTo(0,0); }
+function go(t){ tab = t; q = ""; listMax = 50; render(); window.scrollTo(0,0); }
 function renderNav(){
   if(mode !== "ok"){ $("#nav").innerHTML = ""; return; }
   $("#nav").classList.toggle("many", tabsFor().length > 5);
@@ -373,6 +373,25 @@ function renderWho(){
 }
 
 /* ---------- itens de lista ---------- */
+function otRow(o, hideCondo){
+  const late = o.estado !== "concluida" && o.data && o.data < today();
+  const est = o.estado === "concluida" ? '<span class="badge b-green">Concluída</span>' : o.estado === "curso" ? '<span class="badge b-blue">Em curso</span>' : "";
+  const sub = [hideCondo ? "" : cName(condoOf(o)), IS_ADMIN ? (o.tecnico ? nm(o.tecnico) : (gecResp(o) ? "Gecond: " + gecResp(o) : "Por atribuir")) : ""].filter(Boolean).join(" · ");
+  const pr = o.prioridade === "alta" ? '<b style="color:var(--red)">⚠ </b>' : "";
+  return `<div class="prow" onclick="openOt('${o.id}')"><span class="mono pd">${esc(numOt(o) || "")}</span><span class="pn">${pr}${esc(o.titulo)}${isExt(o) ? " 🛗" : ""}<small>${esc(sub)}</small></span>${est}<span class="badge ${late ? "b-red" : ""}" style="white-space:nowrap">${o.estado==="concluida" ? fmtDate(o.concluida) : fmtDate(o.data)}</span></div>`;
+}
+let grpOpen = new Set(), listMax = 50;
+function grpBlock(key, label, sub, items, extra){
+  const aberto = grpOpen.has(key);
+  return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${label}</span><span class="badge">${items.length}</span>${sub ? `<span class="pg-s">${sub}</span>` : ""}</summary>${aberto ? `${extra || ""}<div class="plist">${items.map(o => otRow(o)).join("")}</div>` : ""}</details>`;
+}
+function grpToggle(k, open){ if(open){ if(!grpOpen.has(k)){ grpOpen.add(k); render(); } } else { grpOpen.delete(k); } }
+async function assignMany(key, tec){
+  if(!tec) return;
+  const ids = (window.__grp || {})[key] || [];
+  for(const id of ids){ const o = S.ots[id]; if(o && !o.tecnico) updOt(id, {tecnico: tec, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME}); }
+  toast(ids.length + " ordens atribuídas a " + nm(tec) + "."); render();
+}
 function otItem(o, hideCondo){
   const p = PRIOR[o.prioridade] || PRIOR.media;
   const late = o.estado !== "concluida" && o.data && o.data < today();
@@ -443,7 +462,12 @@ function viewInicio(){
     ${statCard(ots.filter(o=>o.estado==="curso").length, "Em curso", "techF='';otFilter='curso';go('ordens')")}
     ${statCard(atrasadas, "Preventivas em atraso", "go('prev')", true)}
   </div>
-  ${porAtribuir.length?`<h3>Por atribuir</h3><div class="list">${porAtribuir.map(o=>otItem(o)).join("")}</div>`:""}
+  ${porAtribuir.length ? (() => { const g = {}; for(const o of porAtribuir){ const k = isExt(o) ? "Elevadores / empresa externa" : (gecResp(o) || "Sem indicação"); (g[k] ||= []).push(o); }
+    window.__grp = {};
+    return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
+      const urg = os.filter(o => o.prioridade === "alta").length; const velhas = os.filter(o => o.data && diffDays(t, o.data) > 30).length;
+      return grpBlock(key, esc(k), [urg ? `<span class="warnTxt">${urg} urgente${urg===1?"":"s"}</span>` : "", velhas ? `${velhas} com mais de 30 dias` : ""].filter(Boolean).join(" · "), os,
+        `<div class="actions" style="margin:6px 0;flex-wrap:nowrap"><span style="font-size:13px;color:var(--muted);white-space:nowrap">Atribuir todas a</span><select onchange="assignMany('${esc(key)}', this.value)" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff">${techOptions("")}</select></div>`); }).join(""); })() : ""}
   <h3>Técnicos</h3>
   ${tecs.length ? `<div class="list">${tecs.map(x => {
       const mine = ots.filter(o => o.tecnico === x.id);
@@ -451,7 +475,7 @@ function viewInicio(){
       const curso = mine.filter(o => o.estado === "curso").length;
       return `<div class="item" onclick="techF='${x.id}';otFilter='ativas';go('ordens')"><div class="bar ${lt?"red":pend.length?"amber":"green"}"></div><div class="main"><div class="t">${esc(x.nome)}</div><div class="s">${pend.length} pendente${pend.length===1?"":"s"} · ${curso} em curso</div></div><div class="r">${lt?`<span class="badge b-red">${lt} em atraso</span>`:""}</div></div>`;
     }).join("")}</div>` : emptyBox("Ainda não há técnicos. Crie as contas no separador <b>Equipa</b>.", `<button class="btn pri" onclick="go('equipa')">Ir para Equipa</button>`)}
-  ${late.length?`<h3>Em atraso</h3><div class="list">${late.map(o=>otItem(o)).join("")}</div>`:""}
+  ${late.length ? `<h3>Em atraso</h3>` + (() => { const g = {}; for(const o of late) (g[nm(o.tecnico)] ||= []).push(o); return Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => grpBlock("at:" + k, esc(k), "", os)).join(""); })() : ""}
   ${due.length?`<h3>Preventivas a lançar</h3><div class="list">${due.map(p => `<div class="item"><div class="bar ${planStatus(p)[2]}"></div><div class="main" onclick="openPlan('${p.id}')"><div class="t">${esc(p.titulo)}</div><div class="s">${esc(cName(condoOf(p)))} · ${fmtDate(planNext(p))}${p.tecnico?" · 👷 "+esc(nm(p.tecnico)):""}</div></div><div class="r"><button class="btn sm pri" onclick="genFromPlan('${p.id}')">Criar ordem</button></div></div>`).join("")}</div>`:""}
   <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button><button class="btn" onclick="openBatchPrint()">🖨️ Imprimir relatórios da semana</button></div>`;
 }
@@ -466,7 +490,7 @@ function viewOrdens(){
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
-  <div class="list" id="lst">${list.length ? list.map(o=>otItem(o, !!condoF)).join("") : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
+  <div class="${IS_ADMIN ? "pgrp plain" : "list"}" id="lst">${list.length ? (IS_ADMIN ? `<div class="plist">${list.slice(0, listMax).map(o => otRow(o, !!condoF)).join("")}</div>${list.length > listMax ? `<div class="actions" style="justify-content:center;margin:8px 0"><button class="btn" onclick="listMax+=100;renderListOnly()">Mostrar mais (${list.length - listMax} restantes)</button></div>` : ""}` : list.map(o=>otItem(o, !!condoF)).join("")) : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
 }
 
 let prevF = "", prevTec = "", prevQ = "", prevOpen = null;
@@ -1662,13 +1686,13 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, prevToggle, genPlans, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
