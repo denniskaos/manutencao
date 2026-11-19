@@ -33,9 +33,10 @@ const configured = /^https:\/\//.test(CFG.SUPABASE_URL || "") && CFG.SUPABASE_AN
 const sb = configured ? createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } }) : null;
 
 // Tabelas e colunas (a aplicação usa nomes camelCase; a base de dados snake_case)
-const TABLES = { condos: "condominios", equip: "equipamentos", plans: "planos", ots: "ordens" };
+const TABLES = { condos: "condominios", equip: "equipamentos", plans: "planos", ots: "ordens", cdm: "condominos" };
 const COLS = {
   condominios: ["id","codigo","nome","morada","nif","fracoes","admin","contacto","notas"],
+  condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
   ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial"],
@@ -47,7 +48,7 @@ function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
-const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{}, tarifas:{ deslocacao: 0, hora: 0 } };
+const S = { cdm:{}, condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{}, tarifas:{ deslocacao: 0, hora: 0 } };
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
@@ -123,6 +124,7 @@ async function loadAll(uid){
     S.condos = Object.fromEntries(condos.map(r => [r.id, fromRow(r)]));
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
     S.plans = Object.fromEntries(plans.map(r => [r.id, fromRow(r)]));
+    S.cdm = Object.fromEntries((await all("condominos")).map(r => [r.id, fromRow(r)]));
     S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)]));
     S.notifs = notifs.map(fromRow);
   }catch(e){ console.error(e); mode = "error"; render(); return; }
@@ -146,7 +148,7 @@ async function loadAll(uid){
 
 function subscribeRealtime(){
   const ch = sb.channel("dados");
-  const map = { perfis: "equipa", condominios: "condos", equipamentos: "equip", planos: "plans", ordens: "ots" };
+  const map = { perfis: "equipa", condominios: "condos", equipamentos: "equip", planos: "plans", ordens: "ots", condominos: "cdm" };
   for(const [table, col] of Object.entries(map)){
     ch.on("postgres_changes", { event: "*", schema: "public", table }, p => {
       if(p.eventType === "DELETE"){ if(p.old && p.old.id) delete S[col][p.old.id]; }
@@ -721,9 +723,9 @@ function delCondo(id){
   if(busy){ toast("Este condomínio tem equipamentos, planos ou ordens. Elimine-os primeiro."); return; }
   del("condos", id); closeSheet(); toast("Condomínio eliminado.");
 }
-function openCondo(id){
+function openCondo(id, startSub){
   if(!S.condos[id]) return;
-  let sub = "ordens";
+  let sub = startSub || "ordens"; let cq = "";
   const draw = () => {
     const c = S.condos[id]; if(!c) return "";
     const ots = otsSorted().filter(o => condoOf(o) === id);
@@ -733,6 +735,17 @@ function openCondo(id){
     let content = "";
     if(sub === "ordens") content = `<div class="list">${ots.length ? ots.map(o=>otItem(o,true)).join("") : emptyBox(IS_ADMIN?"Sem ordens de trabalho neste condomínio.":"Não tem ordens neste condomínio.")}</div>`;
     if(sub === "prev") content = `<div class="list">${plans.length ? plans.map(p=>planItem(p,true)).join("") : emptyBox("Sem planos preventivos.")}</div><div class="actions" style="margin-top:10px"><button class="btn" onclick="editPlan(null,'${id}')">+ Plano preventivo</button></div>`;
+    const cdms = Object.values(S.cdm).filter(x => x.condoId === id).sort((a,b) => (a.fracao ? 0 : 1) - (b.fracao ? 0 : 1) || (a.fracao||"").localeCompare(b.fracao||"", "pt", {numeric:true}) || a.nome.localeCompare(b.nome, "pt"));
+    if(sub === "cdm"){
+      const list = cdms.filter(x => !cq || hit([x.fracao, x.nome, x.telefone, x.email, x.notas].join(" "), cq));
+      content = `${cdms.length > 8 ? `<input class="search" placeholder="Procurar condómino, fração ou telefone…" value="${esc(cq)}" oninput="condoCq(this.value)">` : ""}
+      <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" ${IS_ADMIN?`onclick="editCdm('${x.id}')"`:""} style="cursor:${IS_ADMIN?"pointer":"default"}"><div class="bar"></div><div class="main">
+        <div class="t">${x.fracao?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(x.fracao)}</span>`:""}${esc(x.nome)}</div>
+        ${x.telefone?`<div class="s mono">${esc(x.telefone)}</div>`:""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
+        <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone?`<a class="btn sm" href="tel:${esc(String(x.telefone).replace(/[^0-9+]/g, ""))}">📞 Ligar</a>${waNum(x.telefone).length >= 11 ? `<a class="btn sm wa" href="https://wa.me/${waNum(x.telefone)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`:""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}">✉️ E-mail</a>`:""}</div>
+      </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados." + (IS_ADMIN ? "" : " Peça ao escritório para os acrescentar."))}</div>
+      ${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`:""}`;
+    }
     if(sub === "equip") content = `<div class="list">${eqs.length ? eqs.map(e => `<div class="item" onclick="openEquip('${e.id}')"><div class="bar"></div><div class="main"><div class="t">${esc(e.nome)}</div><div class="s">${esc([e.tipo, e.local].filter(Boolean).join(" · "))}</div></div></div>`).join("") : emptyBox("Sem equipamentos registados.")}</div>${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editEquip(null,'${id}')">+ Equipamento</button></div>`:""}`;
     const maps = c.morada ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
     return `<div class="panel"><dl class="kv">
@@ -747,11 +760,32 @@ function openCondo(id){
       <div class="seg" style="margin-bottom:10px">
         <button class="${sub==="ordens"?"on":""}" onclick="condoSub('ordens')">Ordens${pend.length?` (${pend.length})`:""}</button>
         ${IS_ADMIN?`<button class="${sub==="prev"?"on":""}" onclick="condoSub('prev')">Preventiva (${plans.length})</button>`:""}
-        <button class="${sub==="equip"?"on":""}" onclick="condoSub('equip')">Equipamentos (${eqs.length})</button></div>
+        <button class="${sub==="cdm"?"on":""}" onclick="condoSub('cdm')">Condóminos (${cdms.length})</button>
+        <button class="${sub==="equip"?"on":""}" onclick="condoSub('equip')">Equip. (${eqs.length})</button></div>
       ${content}`;
   };
-  window.condoSub = s => { sub = s; const b = $("#sheet .body"); if(b) b.innerHTML = draw(); };
+  window.condoSub = s => { sub = s; cq = ""; const b = $("#sheet .body"); if(b) b.innerHTML = draw(); };
+  window.condoCq = v => { cq = v; const tmp = document.createElement("div"); tmp.innerHTML = draw(); const n = tmp.querySelector("#cdmList"); if(n && $("#cdmList")) $("#cdmList").innerHTML = n.innerHTML; };
   openSheet(esc(cLabel(S.condos[id])), draw(), () => { const b = $("#sheet .body"); if(b && S.condos[id]) b.innerHTML = draw(); else if(!S.condos[id]) closeSheet(); });
+}
+
+/* ---------- condóminos ---------- */
+function editCdm(id, condoId){
+  if(!IS_ADMIN) return;
+  const x = id ? S.cdm[id] : { condoId };
+  openSheet(id ? "Editar condómino" : "Novo condómino", `
+    <p style="margin-top:0;color:var(--muted);font-size:14px">${esc(cName(x.condoId))}</p>
+    <div class="grid2"><label class="f"><span>Fração</span><input id="k_fr" value="${esc(x.fracao)}" placeholder="Ex.: 1º Esq Frt"></label>
+    <label class="f"><span>Telemóvel / telefone</span><input id="k_tel" type="tel" value="${esc(x.telefone)}"></label></div>
+    <label class="f"><span>Nome *</span><input id="k_nome" value="${esc(x.nome)}"></label>
+    <label class="f"><span>E-mail</span><input id="k_mail" type="email" value="${esc(x.email)}"></label>
+    <label class="f"><span>Notas</span><textarea id="k_notas" placeholder="Proprietário / inquilino, melhor hora para contactar…">${esc(x.notas)}</textarea></label>
+    <div class="actions">${id?`<button class="btn danger" onclick="armDelete(this,()=>{del('cdm','${id}');openCondo('${x.condoId}','cdm');toast('Condómino apagado.')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="openCondo('${x.condoId}','cdm')">Cancelar</button><button class="btn pri" onclick="saveCdm('${id||""}','${x.condoId}')">Guardar</button></div>`);
+}
+function saveCdm(id, condoId){
+  const nome = val("k_nome"); if(!nome){ toast("Indique o nome."); return; }
+  const x = { ...(id ? S.cdm[id] : {}), id: id || newId(), condoId, fracao: val("k_fr"), nome, telefone: val("k_tel"), email: val("k_mail"), notas: val("k_notas") };
+  put("cdm", x); toast("Condómino guardado."); openCondo(condoId, "cdm");
 }
 
 /* ---------- equipamentos ---------- */
@@ -980,7 +1014,7 @@ function openOt(id){
       ${IS_ADMIN?`<div class="panel"><label class="f" style="margin:0"><span>Técnico atribuído</span><select onchange="assignOt('${id}', this.value)">${techOptions(o.tecnico)}</select></label>
         ${o.tecnico && o.tecnico !== ME && !locked && phoneOf(o.tecnico) ? `<div style="margin-top:10px">${waBtn(phoneOf(o.tecnico), waOrdem(o), "Enviar também por WhatsApp")}</div>` : ""}</div>`:""}
       <div class="panel"><dl class="kv">
-        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a></dd>
+        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap">👥 condóminos</a>` : ""}</dd>
         ${c.morada?`<dt>Morada</dt><dd>${esc(c.morada)}${maps}</dd>`:""}
         ${o.equipId && S.equip[o.equipId]?`<dt>Equipamento</dt><dd><a href="#" onclick="event.preventDefault();openEquip('${o.equipId}')" style="color:inherit">${esc(eqName(o.equipId))}</a></dd>`:""}
         ${o.zona?`<dt>Zona</dt><dd>${esc(o.zona)}</dd>`:""}
@@ -1109,7 +1143,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
