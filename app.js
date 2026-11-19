@@ -541,18 +541,28 @@ function genPlans(k){
   render();
 }
 
+let condoPend = false;
 function viewCondos(){
-  const list = condosSorted().filter(c => !q || hit([c.codigo,c.nome,c.morada,c.admin,c.nif].join(" "), q));
   const mine = myOts();
+  const pendOf = {}; for(const o of mine) if(o.estado !== "concluida"){ const c = condoOf(o); pendOf[c] = (pendOf[c] || 0) + 1; }
+  const lateOf = {}; if(IS_ADMIN) for(const p of Object.values(S.plans)) if(planStatus(p)[3] < 0){ const c = condoOf(p); lateOf[c] = (lateOf[c] || 0) + 1; }
+  const list = condosSorted().filter(c => !q || hit([c.codigo,c.nome,c.morada,c.admin,c.nif].join(" "), q)).filter(c => !condoPend || pendOf[c.id]);
+  const nPend = condosSorted().filter(c => pendOf[c.id]).length;
+  const row = c => `<div class="prow" onclick="openCondo('${c.id}')"><span class="mono pd" style="color:var(--accent);font-weight:600;min-width:52px">${esc(c.codigo || "")}</span><span class="pn">${esc(c.nome)}<small>${esc(c.morada || "")}</small></span>${pendOf[c.id] ? `<span class="badge b-amber">${pendOf[c.id]}</span>` : ""}${lateOf[c.id] ? `<span class="badge b-red">${lateOf[c.id]} prev.</span>` : ""}</div>`;
+  const zona = c => ((c.codigo || "").match(/^[A-Z]+/) || ["Outros"])[0];
+  const terra = cs => { const n = {}; for(const c of cs){ const m = /\d{4}-\d{3}\s+(.+)$/.exec(c.morada || ""); if(m){ const t = m[1].trim(); n[t] = (n[t] || 0) + 1; } } const e = Object.entries(n).sort((a,b) => b[1] - a[1]); return e.length ? e[0][0] : ""; };
+  let body;
+  if(!list.length) body = emptyBox(Object.keys(S.condos).length ? "Nenhum condomínio encontrado." : "Ainda não há condomínios.");
+  else if(q || list.length <= 15) body = `<div class="pgrp plain"><div class="plist">${list.map(row).join("")}</div></div>`;
+  else {
+    const g = {}; for(const c of list) (g[zona(c)] ||= []).push(c);
+    body = Object.entries(g).map(([z, cs]) => { const key = "cz:" + z; const aberto = grpOpen.has(key); const np = cs.reduce((a, c) => a + (pendOf[c.id] ? 1 : 0), 0); const t = terra(cs);
+      return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${key}', this.open)"><summary><span class="pg-t"><span class="mono" style="color:var(--accent)">${esc(z)}</span>${t ? " · " + esc(t) : ""}</span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
+  }
   return `<h2>Condomínios <span class="mono" style="font-size:14px;color:var(--muted);margin-right:auto;margin-left:8px">${Object.keys(S.condos).length}</span>${IS_ADMIN?'<button class="btn pri sm" onclick="editCondo()">+ Novo</button>':""}</h2>
+  <div class="chips"><button class="chip ${!condoPend?"on":""}" onclick="condoPend=false;render()">Todos</button><button class="chip ${condoPend?"on":""}" onclick="condoPend=true;render()">Com ordens pendentes <span class="mono" style="opacity:.7">${nPend}</span></button></div>
   <input class="search" placeholder="Procurar por código, nome, morada ou NIF…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
-  <div class="list" id="lst">${list.length ? list.map(c => {
-    const pend = mine.filter(o => condoOf(o) === c.id && o.estado !== "concluida").length;
-    const late = IS_ADMIN ? Object.values(S.plans).filter(p => condoOf(p) === c.id && planStatus(p)[3] < 0).length : 0;
-    const neq = Object.values(S.equip).filter(e => e.condoId === c.id).length;
-    return `<div class="item" onclick="openCondo('${c.id}')"><div class="bar ${late?"red":pend?"amber":""}"></div><div class="main"><div class="t">${c.codigo?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(c.codigo)}</span>`:""}${esc(c.nome)}</div><div class="s">${esc(c.morada||"")}</div>${neq?`<div class="s">${neq} equipamento${neq===1?"":"s"}</div>`:""}</div>
-      <div class="r">${pend?`<span class="badge b-amber">${pend} pendente${pend>1?"s":""}</span>`:""}${late?`<span class="badge b-red">${late} prev. atrasada${late>1?"s":""}</span>`:""}</div></div>`;
-  }).join("") : emptyBox(Object.keys(S.condos).length ? "Nenhum condomínio encontrado." : "Ainda não há condomínios. Execute o ficheiro 02_condominios.sql no Supabase (ver GUIA.md).")}</div>`;
+  <div id="lst" class="${!q && list.length > 15 ? "czgrid" : ""}">${body}</div>`;
 }
 
 function viewEquipa(){
@@ -1690,7 +1700,7 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
