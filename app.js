@@ -91,13 +91,7 @@ function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.f
 /* ---------- arranque e sessão ---------- */
 // iPhone: impedir zoom com dois dedos e com duplo toque (a app fica do tamanho do ecrã).
 for(const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
-// iPhone: depois de fechar o teclado ou de o ecrã mudar de tamanho, voltar a assentar os elementos fixos (menu do fundo).
-if(isIOS){
-  const reassentar = () => setTimeout(() => { window.scrollTo(window.scrollX, window.scrollY); document.body.style.minHeight = "100.01vh"; requestAnimationFrame(() => { document.body.style.minHeight = ""; }); }, 60);
-  document.addEventListener("focusout", e => { if(e.target && e.target.matches && e.target.matches("input,textarea,select")) reassentar(); });
-  if(window.visualViewport){ let vh = window.visualViewport.height; window.visualViewport.addEventListener("resize", () => { if(window.visualViewport.height > vh) reassentar(); vh = window.visualViewport.height; }); }
-  window.addEventListener("orientationchange", reassentar);
-}
+const scroller = () => document.getElementById("app") || document.scrollingElement;
 let lastTouchEnd = 0;
 if(isIOS) document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
 async function start(){
@@ -376,7 +370,7 @@ const tabsFor = () => IS_ADMIN
 function go(t){
   if(t !== "inicio" && !tabHist){ try{ history.pushState({ tab: 1 }, ""); tabHist = true; }catch(e){} }
   else if(t === "inicio" && tabHist){ tabHist = false; histBack(); }
-  tab = t; q = ""; listMax = 50; render(); window.scrollTo(0,0);
+  tab = t; q = ""; listMax = 50; render(); scroller().scrollTop = 0;
 }
 function renderNav(){
   if(mode !== "ok"){ $("#nav").innerHTML = ""; return; }
@@ -454,7 +448,7 @@ function grpBlock(key, label, sub, items, extra){
   const aberto = grpOpen.has(key);
   return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${label}</span><span class="badge">${items.length}</span>${sub ? `<span class="pg-s">${sub}</span>` : ""}</summary>${aberto ? `${extra || ""}<div class="plist">${items.map(o => otRow(o)).join("")}</div>` : ""}</details>`;
 }
-function grpToggle(k, open){ if(open){ if(!grpOpen.has(k)){ grpOpen.add(k); const y = window.scrollY; render(); window.scrollTo(0, y); } } else { grpOpen.delete(k); } }
+function grpToggle(k, open){ if(open){ if(!grpOpen.has(k)){ grpOpen.add(k); const y = scroller().scrollTop; render(); scroller().scrollTop = y; } } else { grpOpen.delete(k); } }
 async function assignMany(key, tec){
   if(!tec) return;
   const ids = (window.__grp || {})[key] || [];
@@ -718,7 +712,7 @@ function histBack(){ ignorePop++; history.back(); }
 window.addEventListener("popstate", () => {
   if(ignorePop > 0){ ignorePop--; return; }
   if($("#scrim").classList.contains("open")){ sheetHist = false; hideSheet(); return; }
-  if(tabHist && tab !== "inicio"){ tabHist = false; tab = "inicio"; q = ""; listMax = 50; render(); window.scrollTo(0, 0); }
+  if(tabHist && tab !== "inicio"){ tabHist = false; tab = "inicio"; q = ""; listMax = 50; render(); scroller().scrollTop = 0; }
 });
 function openSheet(title, html, refresh){
   if(pendingBack){ clearTimeout(pendingBack); pendingBack = null; }
