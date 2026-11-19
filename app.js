@@ -576,6 +576,8 @@ function viewCondos(){
   else if(q || list.length <= 15) body = `<div class="pgrp plain"><div class="plist">${list.map(row).join("")}</div></div>`;
   else {
     const g = {}; for(const c of list) (g[localidade(c)] ||= []).push(c);
+    const nomeOrd = c => semAcento(c.nome).replace(/^(condominio\s+)?(edificio|edficio|edíficio|ed\.|urb\.?|urbanizacao)\s*/i, "").replace(/^[\s\-–—.]+/, "");
+    for(const k in g) g[k].sort((a, b) => nomeOrd(a).localeCompare(nomeOrd(b), "pt", { numeric: true }));
     body = Object.entries(g).sort((a, b) => a[0] === "Outras" ? 1 : b[0] === "Outras" ? -1 : b[1].length - a[1].length).map(([z, cs]) => { const key = "cz:" + z; const aberto = grpOpen.has(key); const np = cs.reduce((a, c) => a + (pendOf[c.id] ? 1 : 0), 0);
       const cods = [...new Set(cs.map(zona))].join(", ");
       return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${esc(z)} <span class="mono" style="color:var(--muted);font-weight:400;font-size:12px">${esc(cods)}</span></span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
