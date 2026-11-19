@@ -148,6 +148,7 @@ async function loadAll(uid){
     S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
   await loadStock();
+  loadMeteo(); setInterval(() => loadMeteo(), 30 * 60 * 1000);
   mode = "ok";
   subscribeRealtime();
   render();
@@ -366,13 +367,47 @@ function renderNav(){
   $("#nav").classList.toggle("many", tabsFor().length > 5);
   $("#nav").innerHTML = tabsFor().map(([k,l]) => `<button class="${tab===k?"on":""}" onclick="go('${k}')">${ICONS[k]}${esc(l)}</button>`).join("");
 }
+/* ---------- meteorologia (IPMA, dados abertos) ---------- */
+const WX = { 1:"☀️", 2:"🌤️", 3:"⛅", 4:"☁️", 5:"🌥️", 6:"🌦️", 7:"🌦️", 8:"🌧️", 9:"🌧️", 10:"🌦️", 11:"🌧️", 12:"🌧️", 13:"🌦️", 14:"🌧️", 15:"🌦️", 16:"🌫️", 17:"🌫️", 18:"🌨️", 19:"⛈️", 20:"⛈️", 21:"🌨️", 22:"❄️", 23:"⛈️", 24:"☁️", 25:"🌥️", 26:"🌫️", 27:"☁️", 28:"🌨️", 29:"🌨️", 30:"🌨️" };
+const METEO_LOCAIS = [["1131200", "Porto"], ["1030300", "Braga"]];
+let meteo = null, meteoLocal = (() => { try{ return localStorage.getItem("meteoLocal") || "1131200"; }catch(e){ return "1131200"; } })();
+async function loadMeteo(force){
+  try{
+    if(!force){ const c = JSON.parse(localStorage.getItem("meteo:" + meteoLocal) || "null"); if(c && Date.now() - c.t < 30 * 60 * 1000){ meteo = c.d; renderWho(); return; } }
+  }catch(e){}
+  try{
+    const { data, error } = await sb.functions.invoke("meteo", { body: { local: meteoLocal } });
+    if(error || !data || data.erro || !data.dias) throw (error || new Error(data && data.erro));
+    meteo = data; try{ localStorage.setItem("meteo:" + meteoLocal, JSON.stringify({ t: Date.now(), d: data })); }catch(e){}
+    renderWho(); if(sheetRefresh && document.getElementById("wxSheet")) sheetRefresh();
+  }catch(e){ console.warn("meteo", e); }
+}
+function meteoHoje(){ if(!meteo || !meteo.dias) return null; const t = today(); return meteo.dias.find(d => d.data === t) || meteo.dias[0]; }
+function meteoChip(){
+  const d = meteoHoje(); if(!d) return "";
+  return `<button class="wx" onclick="openMeteo()" aria-label="Meteorologia" title="${esc(d.desc)} · ${esc(meteo.local)}">${WX[d.tipo] || "🌡️"}<b>${Math.round(d.tMax)}°</b>${d.prob >= 50 ? `<small>💧${Math.round(d.prob)}%</small>` : ""}</button>`;
+}
+const DIAS_SEM = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+function openMeteo(){
+  const draw = () => {
+    if(!meteo) return `<div id="wxSheet">${emptyBox("A carregar a previsão…")}</div>`;
+    const t = today(); const am = addDays(t, 1);
+    return `<div id="wxSheet"><div class="chips">${METEO_LOCAIS.map(([id, n]) => `<button class="chip ${meteoLocal===id?"on":""}" onclick="setMeteoLocal('${id}')">${n}</button>`).join("")}</div>
+      <div class="plist" style="border:1px solid var(--line);border-radius:var(--r);margin:0;background:var(--card)">${meteo.dias.map(d => { const nome = d.data === t ? "Hoje" : d.data === am ? "Amanhã" : DIAS_SEM[new Date(d.data + "T12:00:00").getDay()];
+        return `<div class="prow" style="cursor:default"><span style="font-size:28px;line-height:1">${WX[d.tipo] || "🌡️"}</span><span class="pn"><b>${nome}</b> <span style="color:var(--muted);font-size:13px">${fmtDate(d.data).slice(0, 5)}</span><small>${esc(d.desc)}${d.vento ? " · vento " + esc(d.vento) : ""}</small></span><span style="text-align:right;white-space:nowrap"><b>${Math.round(d.tMax)}°</b> <span style="color:var(--muted)">${Math.round(d.tMin)}°</span><br><span style="font-size:13px;color:${d.prob >= 50 ? "var(--blue)" : "var(--muted)"}">💧 ${Math.round(d.prob)}%</span></span></div>`; }).join("")}</div>
+      ${meteo.dias.slice(0, 3).some(d => d.prob >= 70) ? `<div class="note" style="margin-top:10px">🌧️ Chuva provável nos próximos dias — bom momento para verificar caleiros, ralos e infiltrações; trabalhos em telhados e terraços ficam para dias secos.</div>` : ""}
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">Fonte: IPMA (dados abertos) · previsão para a cidade de ${esc(meteo.local)}; no interior pode variar ligeiramente.${meteo.atualizado ? " Atualizado: " + esc(String(meteo.atualizado).replace("T", " ").slice(0, 16)) + "." : ""}</p></div>`;
+  };
+  openSheet("Meteorologia", draw(), () => { const b = document.querySelector("#sheet .body"); if(b && document.getElementById("wxSheet")) b.innerHTML = draw(); });
+}
+function setMeteoLocal(id){ meteoLocal = id; try{ localStorage.setItem("meteoLocal", id); }catch(e){} meteo = null; if(sheetRefresh) sheetRefresh(); loadMeteo(); }
 function renderWho(){
   const el = $("#who");
   if(mode !== "ok"){ el.innerHTML = ""; document.title = "Manutenção"; return; }
   const nu = S.notifs.filter(n => !n.lida).length;
   document.title = (nu ? "(" + nu + ") " : "") + "Manutenção";
   try{ if(navigator.setAppBadge) nu ? navigator.setAppBadge(nu) : navigator.clearAppBadge(); }catch(e){}
-  el.innerHTML = `<button class="bell" onclick="openNotifs()" aria-label="Notificações">🔔${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer">${IS_ADMIN?"Administrativo":"Técnico"}</span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)">👤</button>`;
+  el.innerHTML = `${meteoChip()}<button class="bell" onclick="openNotifs()" aria-label="Notificações">🔔${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer"><span class="lg-only">${IS_ADMIN?"Administrativo":"Técnico"}</span><span class="sm-only">${IS_ADMIN?"Admin.":"Técnico"}</span></span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)">👤</button>`;
   el.querySelector(".who-n").textContent = (S.equipa[ME] || {}).nome || "";
 }
 
@@ -1756,7 +1791,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openMeteo, setMeteoLocal, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });

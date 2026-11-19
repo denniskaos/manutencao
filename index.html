@@ -78,6 +78,10 @@ details.pgrp[open] summary::before{transform:rotate(90deg)}
 .pgrp.plain{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
 .pgrp.plain .plist{border-top:0}
 .prow .badge{flex-shrink:0}
+.wx{background:none;border:0;color:inherit;font:inherit;cursor:pointer;display:flex;align-items:center;gap:3px;padding:4px 2px;font-size:18px;line-height:1}
+.wx b{font-size:14px;font-weight:700}
+.sm-only{display:none}
+@media(max-width:440px){.wx small{display:none}.sm-only{display:inline}.lg-only{display:none}}.wx small{font-size:11px;opacity:.85}
 details.pgrp.cz{margin-bottom:6px}
 details.pgrp.cz summary{padding:9px 0;flex-wrap:nowrap}
 details.pgrp.cz .pg-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
@@ -207,7 +211,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=40"></script>
-<script type="module" src="app.js?v=40"></script>
+<script src="config.js?v=41"></script>
+<script type="module" src="app.js?v=41"></script>
 </body>
 </html>
