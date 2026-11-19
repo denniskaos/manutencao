@@ -542,16 +542,15 @@ function genPlans(k){
 }
 
 let condoPend = false;
-// Localidade de cada prédio a partir da morada (freguesias juntas à localidade principal).
+// Concelho de cada prédio: FL é sempre Felgueiras; os outros pela morada (freguesias juntas ao seu concelho).
 const LOCALIDADES = [
-  ["Freamunde", ["freamunde"]],
   ["Vizela", ["vizela"]],
   ["Marco de Canaveses", ["marco de canaveses"]],
   ["Lousada", ["lousada", "lustosa", "lodares", "silvares", "barrosas", "sousela", "covas - lsd", "covas -lsd"]],
   ["Felgueiras", ["felgueiras", "idaes", "margaride", "pedreira", "revinhade"]],
   ["Penafiel", ["penafiel", "guilhufe", "urro", "irivo", "galegos", "marecos", "rio de moinhos"]],
   ["Paredes", ["paredes", "lordelo", "cristelo", "madalena", "castelões de cepeda", "casteloes de cepeda", "rebordosa"]],
-  ["Paços de Ferreira", ["pacos de ferreira", "pacos ferreira", "carvalhosa", "figueiro", "raimonda", "codessos", "ferreira"]],
+  ["Paços de Ferreira", ["freamunde", "pacos de ferreira", "pacos ferreira", "carvalhosa", "figueiro", "raimonda", "codessos", "ferreira"]],
   ["Valongo", ["valongo", "alfena", "ermesinde"]],
   ["Gondomar", ["rio tinto", "sao pedro da cova", "gondomar"]],
   ["Maia", ["aguas santas", "maia"]],
@@ -561,6 +560,7 @@ const LOCALIDADES = [
 ];
 const semAcento = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 function localidade(c){
+  if(/^FL/i.test(c.codigo || "")) return "Felgueiras";
   const m = String(c.morada || ""); const cp = /\d{4}\s*-\s*\d{3}\s*,?\s*(.+)$/.exec(m) || /\b\d{4}\b\s*-?\s*([^\d,]+)$/.exec(m);
   const partes = [cp ? cp[1] : "", m.split(",").pop(), m];
   for(const parte of partes){ const t = semAcento(parte); if(!t.trim()) continue; for(const [nome, chaves] of LOCALIDADES) if(chaves.some(k => t.includes(semAcento(k)))) return nome; }
