@@ -145,6 +145,12 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .pr .lg{display:flex;align-items:center;gap:14px}
 .pr .lg img{height:16mm;width:auto}
 .pr .pb,.pb{break-before:page;page-break-before:always}
+@page resumo{size:A4 landscape;margin:10mm}
+.sumpage{page:resumo}
+.pr table.sm{font-size:8.5pt}
+.pr table.sm td,.pr table.sm th{padding:3px 5px}
+.pr h3.sub{font-size:9.5pt;margin:8px 0 4px;color:#333}
+.pr tr{break-inside:avoid}
 .pr .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:12px}
 .pr .hd .meta{text-align:right;font-size:9.5pt}
 .pr h2{break-after:avoid;font-size:11pt;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}
@@ -167,7 +173,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=11"></script>
-<script type="module" src="app.js?v=11"></script>
+<script src="config.js?v=12"></script>
+<script type="module" src="app.js?v=12"></script>
 </body>
 </html>

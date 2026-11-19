@@ -1184,17 +1184,28 @@ async function doBatchPrint(){
   const parts = [];
   if(withSum){
     const groups = {}; for(const o of list){ const k = o.tecnico || ""; (groups[k] ||= []).push(o); }
-    let grand = 0;
+    const aggMats = os => { const m = {}; for(const o of os) for(const x of (o.pecas || [])){ const k = x.c || x.n; if(!m[k]) m[k] = { n: x.n, c: x.c, q: 0, v: 0 }; m[k].q += Number(x.q) || 0; m[k].v += lineTotal(x) || 0; } return Object.values(m).sort((a,b) => a.n.localeCompare(b.n, "pt")); };
+    const matsTxt = arr => arr.map(x => `${String(x.q).replace(".", ",")}× ${esc(x.n)}`).join("<br>");
+    const hrs = min => `${Math.floor(min/60)}h${pad(min%60)} <span style="color:#555">(${(min/60).toFixed(2).replace(".", ",")} h)</span>`;
+    let grand = 0, gMin = 0, gDesl = 0;
     const secs = Object.entries(groups).map(([t, os]) => {
-      const tot = os.reduce((a, o) => a + valores(o).total, 0); grand += tot;
-      const tempo = os.reduce((a, o) => a + (Number(o.tempo) || 0), 0);
-      return `<h2>${esc(nm(t))} <span style="font-weight:400;text-transform:none;letter-spacing:0">— ${os.length} ${os.length===1?"ordem":"ordens"} · ${fmtTempo(tempo)}</span></h2>
-        <table><tr><th style="width:52px">Nº</th><th style="width:72px">Data</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:80px;text-align:right">Valor</th></tr>
-        ${os.map(o => { const c = S.condos[condoOf(o)] || {}; return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(o.concluida)}</td><td>${esc(c.codigo ? c.codigo + " — " + c.nome : (c.nome || ""))}</td><td>${esc(o.titulo)}${o.soMaterial===true?" <i>(só material)</i>":""}</td><td style="text-align:right">${eur(valores(o).total)}</td></tr>`; }).join("")}
-        <tr><th colspan="4" style="text-align:right">Total ${esc(nm(t))}</th><th style="text-align:right">${eur(tot)}</th></tr></table>`;
+      const sum = os.reduce((a, o) => { const v = valores(o); a.tot += v.total; a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { tot: 0, mo: 0, desl: 0, nd: 0, mat: 0, min: 0 });
+      grand += sum.tot; gMin += sum.min; gDesl += sum.nd;
+      const byCondo = {}; for(const o of os){ const k = condoOf(o); (byCondo[k] ||= []).push(o); }
+      const condoRows = Object.entries(byCondo).sort((a,b) => cName(a[0]).localeCompare(cName(b[0]), "pt", {numeric:true})).map(([cid, cos]) => {
+        const r = cos.reduce((a, o) => { const v = valores(o); a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.tot += v.total; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { mo: 0, desl: 0, nd: 0, mat: 0, tot: 0, min: 0 });
+        return `<tr><td>${esc(cName(cid))}</td><td style="text-align:center">${cos.length}</td><td>${hrs(r.min)}</td><td style="text-align:center">${r.nd}</td><td>${matsTxt(aggMats(cos)) || "—"}</td><td style="text-align:right">${eur(r.mo)}</td><td style="text-align:right">${eur(r.desl)}</td><td style="text-align:right">${eur(r.mat)}</td><td style="text-align:right"><b>${eur(r.tot)}</b></td></tr>`;
+      }).join("");
+      return `<h2>${esc(nm(t))} <span style="font-weight:400;text-transform:none;letter-spacing:0">— ${os.length} ${os.length===1?"ordem":"ordens"} · ${Math.floor(sum.min/60)}h${pad(sum.min%60)} · ${sum.nd} ${sum.nd===1?"deslocação":"deslocações"}</span></h2>
+        <table class="sm"><tr><th style="width:44px">Nº</th><th style="width:66px">Data</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:auto">Materiais</th><th style="width:62px">Horas</th><th style="width:40px;text-align:center">Desl.</th><th style="width:70px;text-align:right">Valor</th></tr>
+        ${os.map(o => { const v = valores(o); return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(o.concluida)}</td><td>${esc(cName(condoOf(o)))}</td><td>${esc(o.titulo)}${v.so?" <i>(só material)</i>":""}</td><td>${matsTxt(aggMats([o])) || "—"}</td><td>${v.so ? "—" : Math.floor((o.tempo||0)/60) + "h" + pad((o.tempo||0)%60)}</td><td style="text-align:center">${v.nd}</td><td style="text-align:right">${eur(v.total)}</td></tr>`; }).join("")}</table>
+        <h3 class="sub">Resumo por prédio — ${esc(nm(t))}</h3>
+        <table class="sm"><tr><th style="width:auto">Condomínio</th><th style="width:44px;text-align:center">Ordens</th><th style="width:96px">Horas</th><th style="width:44px;text-align:center">Desl.</th><th style="width:auto">Materiais</th><th style="width:72px;text-align:right">Mão de obra</th><th style="width:72px;text-align:right">Deslocação</th><th style="width:72px;text-align:right">Materiais</th><th style="width:78px;text-align:right">Total</th></tr>
+        ${condoRows}
+        <tr><th colspan="2" style="text-align:right">Total ${esc(nm(t))}</th><th>${hrs(sum.min)}</th><th style="text-align:center">${sum.nd}</th><th>${matsTxt(aggMats(os)) || "—"}</th><th style="text-align:right">${eur(sum.mo)}</th><th style="text-align:right">${eur(sum.desl)}</th><th style="text-align:right">${eur(sum.mat)}</th><th style="text-align:right">${eur(sum.tot)}</th></tr></table>`;
     }).join("");
-    parts.push(`<div class="pr"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
-      <div class="meta">${list.length} ${list.length===1?"ordem concluída":"ordens concluídas"}<br>Total: <b>${eur(grand)}</b></div></div>
+    parts.push(`<div class="pr sumpage"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
+      <div class="meta">${list.length} ${list.length===1?"ordem concluída":"ordens concluídas"} · ${Math.floor(gMin/60)}h${pad(gMin%60)} · ${gDesl} desl.<br>Total: <b>${eur(grand)}</b></div></div>
       ${secs}
       <table style="margin-top:14px"><tr><th style="text-align:right">Total geral</th><th style="width:110px;text-align:right">${eur(grand)}</th></tr></table>
       <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`);
