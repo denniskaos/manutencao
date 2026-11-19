@@ -324,7 +324,7 @@ function splitTels(t){
   return [...new Set(out)].filter(x => x.replace(/\D/g, "").length >= 6);
 }
 const fmtTel = n => /^\d{9}$/.test(n) ? n.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3") : n;
-const telBtns = t => { const ns = splitTels(t); return ns.map(n => `<a class="btn sm" href="tel:${esc(n)}">📞 ${ns.length > 1 ? esc(fmtTel(n)) : "Ligar"}</a>${waNum(n).length >= 11 && /^(\+?351)?9/.test(n.replace(/^00/, "+")) ? `<a class="btn sm wa" href="https://wa.me/${waNum(n)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`).join(""); };
+const telBtns = t => { const ns = splitTels(t); return ns.map(n => `<a class="btn sm" href="tel:${esc(n)}">📞 ${esc(fmtTel(n))}</a>${waNum(n).length >= 11 && /^(\+?351)?9/.test(n.replace(/^00/, "+")) ? `<a class="btn sm wa" href="https://wa.me/${waNum(n)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`).join(""); };
 function waNum(t){ let d = String(t||"").replace(/\D/g, ""); if(d.startsWith("00")) d = d.slice(2); if(d.length === 9) d = "351" + d; return d; }
 const waLink = (tel, text) => `https://wa.me/${waNum(tel)}?text=${encodeURIComponent(text)}`;
 function waOrdem(o){
@@ -806,7 +806,7 @@ function openCondo(id, startSub){
       content = `${cdms.length > 8 ? `<input class="search" placeholder="Procurar condómino, fração ou telefone…" value="${esc(cq)}" oninput="condoCq(this.value)">` : ""}
       <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" ${IS_ADMIN?`onclick="editCdm('${x.id}')"`:""} style="cursor:${IS_ADMIN?"pointer":"default"}"><div class="bar"></div><div class="main">
         <div class="t">${x.fracao?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(x.fracao)}</span>`:""}${esc(x.nome)}</div>
-        ${x.telefone?`<div class="s mono">${esc(x.telefone)}</div>`:""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
+        ${x.telefone && !splitTels(x.telefone).length ? `<div class="s mono">${esc(x.telefone)}</div>` : ""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
         <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone ? telBtns(x.telefone) : ""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}">✉️ E-mail</a>`:""}</div>
       </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados." + (IS_ADMIN ? "" : " Peça ao escritório para os acrescentar."))}</div>
       ${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`:""}`;
