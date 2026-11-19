@@ -499,7 +499,8 @@ function viewInicio(){
     <h3>Para hoje e em atraso</h3>
     <div class="list">${hoje.length ? hoje.map(o=>otItem(o)).join("") : emptyBox("Não tem ordens para hoje. 👍")}</div>
     ${prox.length?`<h3>Próximas</h3><div class="list">${prox.slice(0,10).map(o=>otItem(o)).join("")}</div>`:""}
-    <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Registar ocorrência</button></div>`;
+    <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Novo trabalho</button></div>
+    <p style="font-size:13px;color:var(--muted);margin-top:6px">Para manutenções, reparações ou avarias que encontre no local sem ordem do escritório: registe aqui, junte o material, as horas e as fotos e conclua.</p>`;
   }
   const ots = Object.values(S.ots);
   const porAtribuir = sortOts(ots.filter(o => o.estado !== "concluida" && !o.tecnico));
@@ -539,7 +540,7 @@ function viewOrdens(){
   const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -1021,7 +1022,7 @@ function openCondo(id, startSub){
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
       ${c.fracoes?`<dt>Frações</dt><dd>${esc(c.fracoes)}</dd>`:""}
       ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl></div>
-      <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="editOt(null,'${id}')">+ ${IS_ADMIN?"Nova ordem":"Ocorrência"}</button></div>
+      <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="editOt(null,'${id}')">+ ${IS_ADMIN?"Nova ordem":"Novo trabalho"}</button></div>
       <div class="seg" style="margin-bottom:10px">
         <button class="${sub==="ordens"?"on":""}" onclick="condoSub('ordens')">Ordens${pend.length?` (${pend.length})`:""}</button>
         ${IS_ADMIN?`<button class="${sub==="prev"?"on":""}" onclick="condoSub('prev')">Preventiva (${plans.length})</button>`:""}
@@ -1163,9 +1164,9 @@ function editOt(id, condoId, equipId){
   const o = id ? S.ots[id] : {tipo:"corretiva", prioridade:"media", data: today(), condoId: condoId || condoF || "", equipId: equipId||"", tecnico: IS_ADMIN ? (techF && techF !== "-" ? techF : "") : ME};
   if(id && !canEditOt(o)) return;
   const cid = condoOf(o);
-  openSheet(id ? "Editar ordem" : (IS_ADMIN ? "Nova ordem de trabalho" : "Registar ocorrência"), `
-    ${IS_ADMIN?"":'<p style="font-size:13px;color:var(--muted);margin-top:0">Use para registar um problema que encontrou no local. A ordem fica atribuída a si e o escritório é avisado.</p>'}
-    <label class="f"><span>Título *</span><input id="f_tit" value="${esc(o.titulo)}" placeholder="Ex.: Lâmpada fundida no patamar do 3º"></label>
+  openSheet(id ? "Editar ordem" : (IS_ADMIN ? "Nova ordem de trabalho" : "Novo trabalho"), `
+    ${IS_ADMIN?"":'<p style="font-size:13px;color:var(--muted);margin-top:0">Para um trabalho feito sem ordem do escritório (manutenção, reparação, avaria encontrada no local). Depois de guardar, acrescente o material, as horas e as fotos e carregue em <b>Concluir</b>. O escritório é avisado.</p>'}
+    <label class="f"><span>Título *</span><input id="f_tit" value="${esc(o.titulo)}" placeholder="Ex.: Manutenção geral, troca de lâmpadas no 3º"></label>
     ${condoPicker(cid, true)}
     <div class="grid2"><label class="f"><span>Equipamento (opcional)</span><select id="f_eq">${equipOptions(cid, o.equipId)}</select></label>
     <label class="f"><span>Zona / fração</span><input id="f_zona" value="${esc(o.zona)}" placeholder="Ex.: Hall do 3º esq., garagem -1"></label></div>
