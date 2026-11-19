@@ -427,7 +427,7 @@ function viewInicio(){
     }).join("")}</div>` : emptyBox("Ainda não há técnicos. Crie as contas no separador <b>Equipa</b>.", `<button class="btn pri" onclick="go('equipa')">Ir para Equipa</button>`)}
   ${late.length?`<h3>Em atraso</h3><div class="list">${late.map(o=>otItem(o)).join("")}</div>`:""}
   ${due.length?`<h3>Preventivas a lançar</h3><div class="list">${due.map(p => `<div class="item"><div class="bar ${planStatus(p)[2]}"></div><div class="main" onclick="openPlan('${p.id}')"><div class="t">${esc(p.titulo)}</div><div class="s">${esc(cName(condoOf(p)))} · ${fmtDate(planNext(p))}${p.tecnico?" · 👷 "+esc(nm(p.tecnico)):""}</div></div><div class="r"><button class="btn sm pri" onclick="genFromPlan('${p.id}')">Criar ordem</button></div></div>`).join("")}</div>`:""}
-  <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button></div>`;
+  <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button><button class="btn" onclick="openBatchPrint()">🖨️ Imprimir relatórios da semana</button></div>`;
 }
 
 function viewOrdens(){
@@ -436,7 +436,7 @@ function viewOrdens(){
   const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -1099,16 +1099,14 @@ function showReport(id){
 function shareReport(id){ navigator.share({ title: "Relatório — " + S.ots[id].titulo, text: reportText(id) }).catch(() => {}); }
 
 /* ---------- impressão (folha A4) ---------- */
-async function printOt(id){
-  const o = S.ots[id]; if(!o) return;
+function reportHtml(o, withPhotos = true){
   const e = S.equip[o.equipId]; const c = S.condos[condoOf(o)] || {};
   const fotos = o.fotos || [];
-  if(fotos.length){ toast("A preparar fotografias…"); try{ await ensureUrls(fotos); }catch(_){} }
   const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
   const ck = o.checklist || [], pc = o.pecas || [];
   const tempo = o.tempo ? `${Math.floor(o.tempo/60)} h ${o.tempo%60} min` : "";
-  const html = `<div class="pr">
-    <div class="hd"><div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div>
+  return `<div class="pr">
+    <div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}${row("Administração", c.admin)}</table>
@@ -1127,18 +1125,83 @@ async function printOt(id){
       <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>`}
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
-    ${fotos.length?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
+    ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     <div class="sig"><div>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</div><div>O Responsável do Condomínio</div></div>
-    <div class="ft">Impresso em ${fmtDate(today())} · Manutenção de Condomínios</div></div>`;
+    <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+}
+async function printHtml(html){
   let pa = document.getElementById("printArea");
   if(!pa){ pa = document.createElement("div"); pa.id = "printArea"; document.body.appendChild(pa); }
   pa.innerHTML = html;
   const imgs = [...pa.querySelectorAll("img")];
   await Promise.race([
     Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))),
-    new Promise(r => setTimeout(r, 6000)),
+    new Promise(r => setTimeout(r, 12000)),
   ]);
   try{ window.print(); }catch(_){ toast("Este dispositivo não permite imprimir daqui. Use o computador."); }
+}
+async function printOt(id){
+  const o = S.ots[id]; if(!o) return;
+  if((o.fotos||[]).length){ toast("A preparar fotografias…"); try{ await ensureUrls(o.fotos); }catch(_){} }
+  await printHtml(reportHtml(o));
+}
+
+/* ---------- impressão por período (semana), agrupada por técnico ---------- */
+function weekRange(offset){ // offset 0 = esta semana, -1 = semana passada
+  const d = new Date(); const dow = (d.getDay() + 6) % 7; // 0 = segunda
+  const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow + offset * 7);
+  return [iso(mon), addDays(iso(mon), 6)];
+}
+function batchList(){
+  const de = val("b_de"), ate = val("b_ate"), tec = val("b_tec");
+  return Object.values(S.ots).filter(o => o.estado === "concluida" && o.concluida && o.concluida >= de && o.concluida <= ate && (!tec || (tec === "-" ? !o.tecnico : o.tecnico === tec)))
+    .sort((a,b) => nm(a.tecnico).localeCompare(nm(b.tecnico), "pt") || (a.concluida||"").localeCompare(b.concluida||"") || (a.numero||0) - (b.numero||0));
+}
+function batchCount(){ const n = batchList().length; const el = $("#b_count"); if(el) el.textContent = n ? `${n} ${n===1?"ordem concluída":"ordens concluídas"} neste período` : "Nenhuma ordem concluída neste período"; const b = $("#b_btn"); if(b) b.disabled = !n; }
+function setWeek(off){ const [a,b] = weekRange(off); $("#b_de").value = a; $("#b_ate").value = b; batchCount(); }
+function openBatchPrint(){
+  if(!IS_ADMIN) return;
+  const [de, ate] = weekRange(-1);
+  openSheet("Imprimir relatórios por período", `
+    <div class="chips"><button class="chip" onclick="setWeek(-1)">Semana passada</button><button class="chip" onclick="setWeek(0)">Esta semana</button></div>
+    <div class="grid2"><label class="f"><span>De (data de conclusão)</span><input type="date" id="b_de" value="${de}" onchange="batchCount()"></label>
+    <label class="f"><span>Até</span><input type="date" id="b_ate" value="${ate}" onchange="batchCount()"></label></div>
+    <label class="f"><span>Técnico</span><select id="b_tec" onchange="batchCount()"><option value="">Todos os técnicos</option>${tecnicos().map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join("")}</select></label>
+    <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_res" checked> Página de resumo por técnico</label>
+    <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_rel" checked> Relatórios completos (um por página)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input type="checkbox" id="b_fot" checked> Incluir fotografias nos relatórios</label>
+    <div class="note" style="background:var(--blue-bg);color:var(--blue)" id="b_count"></div>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="b_btn" onclick="doBatchPrint()">🖨️ Imprimir</button></div>`);
+  batchCount();
+}
+async function doBatchPrint(){
+  const list = batchList(); if(!list.length) return;
+  const de = val("b_de"), ate = val("b_ate");
+  const withSum = $("#b_res").checked, withRep = $("#b_rel").checked, withPh = $("#b_fot").checked;
+  if(!withSum && !withRep){ toast("Escolha pelo menos o resumo ou os relatórios."); return; }
+  const btn = $("#b_btn"); btn.disabled = true; btn.textContent = "A preparar…";
+  if(withRep && withPh){ const all = list.flatMap(o => o.fotos || []); if(all.length){ try{ await ensureUrls(all); }catch(_){} } }
+  const parts = [];
+  if(withSum){
+    const groups = {}; for(const o of list){ const k = o.tecnico || ""; (groups[k] ||= []).push(o); }
+    let grand = 0;
+    const secs = Object.entries(groups).map(([t, os]) => {
+      const tot = os.reduce((a, o) => a + valores(o).total, 0); grand += tot;
+      const tempo = os.reduce((a, o) => a + (Number(o.tempo) || 0), 0);
+      return `<h2>${esc(nm(t))} <span style="font-weight:400;text-transform:none;letter-spacing:0">— ${os.length} ${os.length===1?"ordem":"ordens"} · ${fmtTempo(tempo)}</span></h2>
+        <table><tr><th style="width:52px">Nº</th><th style="width:72px">Data</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:80px;text-align:right">Valor</th></tr>
+        ${os.map(o => { const c = S.condos[condoOf(o)] || {}; return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(o.concluida)}</td><td>${esc(c.codigo ? c.codigo + " — " + c.nome : (c.nome || ""))}</td><td>${esc(o.titulo)}${o.soMaterial===true?" <i>(só material)</i>":""}</td><td style="text-align:right">${eur(valores(o).total)}</td></tr>`; }).join("")}
+        <tr><th colspan="4" style="text-align:right">Total ${esc(nm(t))}</th><th style="text-align:right">${eur(tot)}</th></tr></table>`;
+    }).join("");
+    parts.push(`<div class="pr"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
+      <div class="meta">${list.length} ${list.length===1?"ordem concluída":"ordens concluídas"}<br>Total: <b>${eur(grand)}</b></div></div>
+      ${secs}
+      <table style="margin-top:14px"><tr><th style="text-align:right">Total geral</th><th style="width:110px;text-align:right">${eur(grand)}</th></tr></table>
+      <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`);
+  }
+  if(withRep) for(const o of list) parts.push(reportHtml(o, withPh));
+  btn.disabled = false; btn.textContent = "🖨️ Imprimir";
+  await printHtml(parts.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
@@ -1146,7 +1209,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
