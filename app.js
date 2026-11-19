@@ -47,7 +47,7 @@ function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
-const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[] };
+const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{} };
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
@@ -108,6 +108,8 @@ async function loadAll(uid){
       all("perfis"), all("condominios"), all("equipamentos"), all("planos"), all("ordens"),
       sb.from("notificacoes").select("*").order("id", { ascending: false }).limit(80).then(r => r.data || []),
     ]);
+    const { data: mats } = await sb.from("materiais").select("*");
+    S.mat = Object.fromEntries((mats || []).map(m => [m.codigo, m]));
     S.equipa = Object.fromEntries(perfis.map(p => [p.id, fromRow(p)]));
     S.condos = Object.fromEntries(condos.map(r => [r.id, fromRow(r)]));
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
@@ -137,6 +139,10 @@ function subscribeRealtime(){
       render();
     });
   }
+  ch.on("postgres_changes", { event: "*", schema: "public", table: "materiais" }, p => {
+    if(p.eventType === "DELETE"){ if(p.old && p.old.codigo) delete S.mat[p.old.codigo]; } else S.mat[p.new.codigo] = p.new;
+    render();
+  });
   ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${ME}` }, p => {
     const n = fromRow(p.new); S.notifs.unshift(n);
     toast("🔔 " + n.titulo + ": " + n.corpo);
@@ -253,6 +259,15 @@ const otsSorted = () => sortOts(myOts());
 const condosSorted = () => Object.values(S.condos).sort((a,b) => (a.codigo||"~").localeCompare(b.codigo||"~", "pt", {numeric:true}) || a.nome.localeCompare(b.nome, "pt"));
 const pessoas = () => Object.values(S.equipa).sort((a,b) => (a.papel === b.papel ? (a.nome||"").localeCompare(b.nome||"", "pt") : a.papel === "tec" ? -1 : 1));
 const tecnicos = () => pessoas().filter(p => p.ativo);
+const matList = () => Object.values(S.mat).filter(m => m.ativo !== false).sort((a,b) => (a.ordem||0) - (b.ordem||0) || a.nome.localeCompare(b.nome, "pt"));
+const partLabel = x => x.n + (x.c ? " (" + x.c + ")" : "");
+function pendingPart(){
+  const sel = document.getElementById("p_sel"); const qt = parseFloat(val("p_qtd")) || 1;
+  if(sel && sel.value && sel.value !== "__outro"){ const m = S.mat[sel.value]; if(m) return {n: m.nome, c: m.codigo, q: qt}; }
+  const n = val("p_nome"); return n ? {n, q: qt} : null;
+}
+function clearPart(){ const sel = $("#p_sel"), a = $("#p_nome"), b = $("#p_qtd"); if(sel) sel.value = ""; if(a){ a.value = ""; a.style.display = matList().length ? "none" : ""; } if(b) b.value = ""; }
+function onPartSel(v){ const a = $("#p_nome"); if(!a) return; a.style.display = v === "__outro" ? "" : "none"; if(v === "__outro") a.focus(); else if(v) { const q = $("#p_qtd"); if(q && !q.value) q.value = 1; } }
 const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
 
 /* ---------- WhatsApp ---------- */
@@ -420,6 +435,11 @@ function viewEquipa(){
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
+  <h3>Materiais do armazém <span class="mono" style="font-weight:500">${matList().length}</span></h3>
+  <div class="panel">
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${matList().map(m => `<span class="badge" style="font-size:13px;padding:5px 10px;display:inline-flex;gap:6px;align-items:center">${esc(m.nome)} <span class="mono" style="color:var(--muted)">${esc(m.codigo)}</span><button onclick="rmMat('${esc(m.codigo)}')" style="border:0;background:none;cursor:pointer;color:var(--muted);padding:0 2px" aria-label="Retirar">✕</button></span>`).join("") || '<span style="color:var(--muted)">Sem materiais.</span>'}</div>
+    <div class="addpart" style="margin-top:10px"><input id="m_cod" placeholder="Código (ex.: LAMP-E27)" style="flex:0 0 38%;text-transform:uppercase"><input id="m_nome" placeholder="Descrição (ex.: Lâmpada E27)" style="flex:1"><button class="btn sm" onclick="addMat()">Adicionar</button></div>
+  </div>
   <h3>Dados</h3>
   <div class="panel" style="font-size:14px">O plano gratuito do Supabase não faz cópias de segurança. Exporte os dados de vez em quando (por exemplo, uma vez por mês) e guarde o ficheiro.
   <div class="actions" style="margin-top:10px"><button class="btn" onclick="exportJSON()">Exportar tudo (JSON)</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
@@ -561,6 +581,23 @@ async function setAtivo(id, ativo){
   catch(e){ toast(e.message); }
 }
 
+/* ---------- materiais do armazém ---------- */
+async function addMat(){
+  const codigo = val("m_cod").toUpperCase().replace(/\s+/g, "-"), nome = val("m_nome");
+  if(!codigo || !nome){ toast("Indique o código e a descrição."); return; }
+  const ordem = Math.max(0, ...Object.values(S.mat).map(m => m.ordem || 0)) + 1;
+  const row = { codigo, nome, ordem, ativo: true };
+  const { error } = await sb.from("materiais").upsert(row);
+  if(error) return writeErr(error);
+  S.mat[codigo] = row; render(); toast("Material adicionado.");
+}
+async function rmMat(codigo){
+  const m = S.mat[codigo]; if(!m) return;
+  const { error } = await sb.from("materiais").update({ ativo: false }).eq("codigo", codigo);
+  if(error) return writeErr(error);
+  S.mat[codigo] = { ...m, ativo: false }; render(); toast(m.nome + " retirado da lista.");
+}
+
 /* ---------- exportação ---------- */
 function download(name, text, type){
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click();
@@ -573,7 +610,7 @@ function exportJSON(){
 function exportCSV(){
   const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Notas"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => p.n + " x" + p.q).join("; "), o.tempo, o.notas].map(cell).join(";"); });
+  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, o.notas].map(cell).join(";"); });
   download(`ordens-${today()}.csv`, "﻿" + [head.map(cell).join(";"), ...rows].join("\r\n"), "text/csv;charset=utf-8");
 }
 
@@ -794,10 +831,10 @@ function setEstado(id, estado, fromTop){
     const btn = document.getElementById("btnConc");
     if(falta && btn && !btn.classList.contains("arm")){ btn.classList.add("arm","danger"); btn.textContent = `Faltam ${falta} verificações — concluir mesmo assim?`; btn.scrollIntoView({behavior:"smooth", block:"center"}); toast(`Faltam ${falta} verificações. Confirme em baixo.`); return; }
     const patch = {estado, concluida: today(), concluidaEm: nowIso(), concluidoPor: ME};
-    const pn = val("p_nome"); if(pn) patch.pecas = [...(o.pecas||[]), {n: pn, q: parseFloat(val("p_qtd")) || 1}];
+    const pend = pendingPart(); const pn = !!pend; if(pend) patch.pecas = [...(o.pecas||[]), pend];
     const tn = document.getElementById("t_notas"); if(tn && tn.value !== (o.notas||"")){ clearTimeout(notesTimer); patch.notas = tn.value; }
     const th = parseInt(val("t_h"))||0, tm = parseInt(val("t_m"))||0; if(document.getElementById("t_h")) patch.tempo = th*60+tm;
-    if(pn){ const a = $("#p_nome"), b = $("#p_qtd"); if(a) a.value = ""; if(b) b.value = ""; }
+    if(pn) clearPart();
     updOt(id, patch);
     toast(IS_ADMIN ? "Ordem concluída." : "Ordem concluída — o escritório foi avisado.");
   } else {
@@ -806,9 +843,8 @@ function setEstado(id, estado, fromTop){
 }
 function toggleCk(id, i){ const o = S.ots[id]; const ck = (o.checklist||[]).map((c,j) => j===i ? {...c, ok:!c.ok} : c); updOt(id, {checklist: ck}); }
 function addPart(id){
-  const n = val("p_nome"); if(!n) return; const qt = parseFloat(val("p_qtd")) || 1;
-  updOt(id, {pecas: [...(S.ots[id].pecas||[]), {n, q: qt}]});
-  const a=$("#p_nome"), b=$("#p_qtd"); if(a){a.value="";a.focus();} if(b) b.value="";
+  const part = pendingPart(); if(!part){ toast("Escolha um material ou escreva o nome."); return; }
+  clearPart(); updOt(id, {pecas: [...(S.ots[id].pecas||[]), part]});
 }
 function rmPart(id, i){ updOt(id, {pecas: (S.ots[id].pecas||[]).filter((_,j)=>j!==i)}); }
 let notesTimer = null;
@@ -889,8 +925,9 @@ function openOt(id){
         <label class="btn sm upl">📷 Adicionar<input type="file" accept="image/*" multiple onchange="addFotos('${id}', this)"></label></div>
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>
       <div class="panel"><b>Peças / materiais usados</b>
-        <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}</span><span class="mono">× ${esc(x.q)}</span><button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}</div>
-        <div class="addpart"><input id="p_nome" placeholder="Ex.: Lâmpada LED E27" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
+        <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span><button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}</div>
+        ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material do armazém —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
+        <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
       <div class="panel"><b>Tempo gasto</b>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="t_h" type="number" min="0" value="${Math.floor((o.tempo||0)/60)}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> h
         <input id="t_m" type="number" min="0" max="59" value="${(o.tempo||0)%60}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> min</div></div>
@@ -904,8 +941,9 @@ function openOt(id){
     const a = document.activeElement;
     if(a && b.contains(a) && a.tagName === "SELECT") return;
     const keep = a && b.contains(a) && a.id ? {id:a.id, v:a.value, s:a.selectionStart} : null;
-    const pn = val("p_nome"), pq = val("p_qtd"); const st = $("#sheet").scrollTop;
+    const pn = val("p_nome"), pq = val("p_qtd"), ps = val("p_sel"); const st = $("#sheet").scrollTop;
     b.innerHTML = draw();
+    if(ps && $("#p_sel")){ $("#p_sel").value = ps; onPartSel(ps); }
     if(pn) $("#p_nome").value = pn; if(pq) $("#p_qtd").value = pq;
     if(keep){ const el = document.getElementById(keep.id); if(el && "value" in el){ el.value = keep.v; el.focus(); try{ el.setSelectionRange(keep.s, keep.s); }catch(e){} } }
     $("#sheet").scrollTop = st;
@@ -927,7 +965,7 @@ function reportText(id){
   if(e || o.zona){ L.push(""); if(e) L.push("Equipamento: " + e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "")); if(o.zona) L.push("Zona: " + o.zona); }
   if(o.descricao) L.push("", "DESCRIÇÃO", o.descricao);
   if((o.checklist||[]).length){ L.push("", "VERIFICAÇÕES"); o.checklist.forEach(x => L.push((x.ok ? "[x] " : "[ ] ") + x.t)); }
-  if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + x.n + " × " + x.q)); }
+  if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q)); }
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
@@ -961,7 +999,7 @@ async function printOt(id){
       ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}</table>
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
-    ${pc.length?`<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:80px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`:""}
+    ${pc.length?`<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`:""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     <div class="sig"><div>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</div><div>O Responsável do Condomínio</div></div>
@@ -982,7 +1020,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
