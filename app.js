@@ -508,7 +508,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}${copiaBanner()}
+  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${pushBanner()}${copiaBanner()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -539,7 +539,7 @@ function viewOrdens(){
   const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -1676,6 +1676,7 @@ function viewStock(){
     <button class="btn" onclick="openMov('devolucao')">↩️ Devolução</button>
     <button class="btn" onclick="openMov('transferencia')">📦 Carregar Arm. C5 / ⇄ Transferência</button>
     <button class="btn" onclick="openMov('ajuste')">± Ajuste</button>
+    <button class="btn" onclick="openSaidaDireta()">📦 Entrega de material</button>
   </div>
   ${baixos.length ? `<div class="note" style="background:var(--red-bg,#fdecea);color:var(--red,#b42318)">⚠️ <b>Repor no armazém:</b> ${baixos.map(a => `${esc(a.nome)} (${numTxt((Q.principal || {})[a.codigo] || 0)} / mín. ${numTxt(Number(a.minimo)||0)})`).join(" · ")}</div>` : ""}
   ${negs.length ? `<div class="note">Stock negativo — falta registar uma carga ou corrigir com um ajuste: ${esc(negs.join(" · "))}</div>` : ""}
@@ -1764,6 +1765,38 @@ async function saveMov(tipo){
   if(origem){ const Q = stockQty(); const neg = movLines.filter(x => ((Q[origem] || {})[x.c] || 0) < 0); if(neg.length) toast("Atenção: " + locNome(origem) + " ficou com stock negativo em " + neg.map(x => (S.mat[x.c] || {}).nome).join(", ")); else toast("Guardado."); } else toast("Guardado.");
   closeSheet(); render();
 }
+/* ---------- saída direta do armazém para um prédio ---------- */
+// Cria uma ordem concluída "Entrega de material" (só material) atribuída a quem regista;
+// sem carrinha associada, o material sai do armazém principal e entra nos relatórios do prédio.
+function openSaidaDireta(){
+  movLines = [];
+  openSheet("Entrega de material", `
+    ${condoPicker("")}
+    <div class="panel"><b>Material</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
+      <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}">${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
+      <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('saida')"><button class="btn sm" onclick="addMovLine('saida')">Adicionar</button></div></div>
+    <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${today()}"></label>
+    <label class="f"><span>Quem levou *</span><input id="mv_quem" placeholder="Nome de quem levantou o material"></label></div>
+    <label class="f"><span>Observações</span><input id="mv_obs" placeholder="Opcional"></label>
+    <div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveSaidaDireta()">Registar saída</button></div>`);
+  drawMovLines();
+}
+async function saveSaidaDireta(){
+  const cid = val("f_condo"); if(!cid){ toast("Escolha o prédio."); return; }
+  if(val("mv_qtd")) addMovLine("saida");
+  if(!movLines.length){ toast("Acrescente pelo menos um artigo."); return; }
+  if(!val("mv_quem")){ toast("Indique quem levou o material."); $("#mv_quem").focus(); return; }
+  const d = val("mv_data") || today(); const obs = val("mv_obs");
+  const pecas = movLines.map(x => ({ c: x.c, n: (S.mat[x.c] || {}).nome || x.c, q: x.q }));
+  const o = { id: newId(), titulo: "Entrega de material", condoId: cid, equipId: "", zona: "", tecnico: ME, tipo: "corretiva", prioridade: "media", estado: "concluida",
+    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
+    deslocacoes: 0, soMaterial: true, criada: today(), criadaEm: nowIso(), criadoPor: ME, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME,
+    concluida: d, concluidaEm: nowIso(), concluidoPor: ME };
+  put("ots", o);
+  closeSheet(); toast("Saída registada — " + pecas.map(p => p.q + "× " + p.n).join(", ") + " para " + cName(cid) + ".");
+  if(VE_STOCK()) setTimeout(() => stockChanged(), 1500);
+}
 /* ---------- ficha do artigo ---------- */
 function openStockArt(c){
   const a = stkArtigos().find(x => x.codigo === c); if(!a) return;
@@ -1805,7 +1838,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openSaidaDireta, saveSaidaDireta, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
