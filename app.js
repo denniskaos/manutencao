@@ -1429,7 +1429,7 @@ let stkLoc = "", stkMovF = "", stkPer = "mes";
 // Venda e margem de cada saída para obra: preço da linha na ordem (ou preço atual) e custo médio do artigo.
 function vendaMov(m){
   const o = m.ordemId ? S.ots[m.ordemId] : null; const ln = o && (o.pecas || []).find(x => x.c === m.codigo);
-  const pu = ln ? unitPrice(ln) : (S.precos[m.codigo] !== undefined ? S.precos[m.codigo] : null);
+  const pu = ln ? unitPrice(ln) : (m.preco !== "" && m.preco != null) ? Number(m.preco) : (S.precos[m.codigo] !== undefined ? S.precos[m.codigo] : null);
   const cu = Number((S.stk.art[m.codigo] || {}).custo) || 0; const q = Number(m.qtd) || 0;
   const venda = pu === null ? 0 : pu * q, custo = cu * q;
   return { pu, venda, custo, margem: venda - custo, q };
@@ -1476,7 +1476,9 @@ function viewStock(){
   const valor = arts.reduce((s, a) => s + tot(a.codigo) * (Number(a.custo) || 0), 0);
   const carr = locs.filter(l => l.tipo === "carrinha").reduce((s, l) => s + uni(l.id), 0);
   const shown = stkLoc ? locs.filter(l => l.id === stkLoc) : locs;
-  const movs = S.stk.mov.filter(m => !stkMovF || m.codigo === stkMovF || m.origem === stkMovF || m.destino === stkMovF).slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
+  const fMov = m => !stkMovF || m.codigo === stkMovF || m.origem === stkMovF || m.destino === stkMovF || (stkMovF.startsWith("ed:") && m.condoId === stkMovF.slice(3));
+  const movsAll = S.stk.mov.filter(fMov);
+  const movs = movsAll.slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
   return `<h2>Stock <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="stockExport()">⬇️ Excel</button></span></h2>
   <div class="stats">
     <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
@@ -1509,7 +1511,10 @@ function viewStock(){
   <div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">O material das ordens concluídas sai da carrinha do técnico atribuído. Técnicos sem carrinha descontam do armazém principal.</div>
     ${locs.filter(l => l.tipo === "carrinha").map(l => `<div class="part" style="gap:8px"><span class="n">${esc(l.nome)} <span class="mono" style="color:var(--muted);font-size:12px">${esc(l.matricula||"")}</span></span><select onchange="setCarTec('${l.id}', this.value)" style="max-width:48%;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><option value="">— Sem técnico —</option>${pessoasAgrupadas(l.tecnico)}</select></div>`).join("")}</div>
   <h3>Movimentos <span class="mono" style="font-weight:500">${S.stk.mov.length}</span></h3>
-  <select class="search" onchange="stkMovF=this.value;render()"><option value="">Todos os artigos e locais</option><optgroup label="Locais">${locs.map(l => `<option value="${l.id}" ${stkMovF===l.id?"selected":""}>${esc(l.nome)}</option>`).join("")}</optgroup><optgroup label="Artigos">${arts.map(a => `<option value="${esc(a.codigo)}" ${stkMovF===a.codigo?"selected":""}>${esc(a.nome)}</option>`).join("")}</optgroup></select>
+  <select class="search" onchange="stkMovF=this.value;render()"><option value="">Todos os artigos e locais</option><optgroup label="Locais">${locs.map(l => `<option value="${l.id}" ${stkMovF===l.id?"selected":""}>${esc(l.nome)}</option>`).join("")}</optgroup><optgroup label="Artigos">${arts.map(a => `<option value="${esc(a.codigo)}" ${stkMovF===a.codigo?"selected":""}>${esc(a.nome)}</option>`).join("")}</optgroup><optgroup label="Edifícios (consumo)">${[...new Set(S.stk.mov.filter(m => m.tipo === "servico" && m.condoId).map(m => m.condoId))].sort((a,b) => cName(a).localeCompare(cName(b), "pt", {numeric:true})).map(c => `<option value="ed:${esc(c)}" ${stkMovF==="ed:"+c?"selected":""}>${esc(cName(c))}</option>`).join("")}</optgroup></select>
+  ${stkMovF ? (() => { const sv = movsAll.filter(m => m.tipo === "servico"); if(!sv.length) return ""; const t = sv.reduce((a, m) => { const v = vendaMov(m); a.q += v.q; a.venda += v.venda; a.margem += v.margem; return a; }, { q: 0, venda: 0, margem: 0 });
+    const porArt = {}; for(const m of sv) porArt[m.codigo] = (porArt[m.codigo] || 0) + Number(m.qtd);
+    return `<div class="panel" style="font-size:14px">Aplicado em obra: <b>${numTxt(t.q)}</b> un. · Vendido <b>${eur(t.venda)}</b> · Margem <b>${eur(t.margem)}</b>${stkMovF.startsWith("ed:") || S.stk.locais[stkMovF] ? `<div style="color:var(--muted);margin-top:4px">${Object.entries(porArt).map(([c, q]) => `${numTxt(q)}× ${esc((S.mat[c] || {}).nome || c)}`).join(" · ")}</div>` : ""}</div>`; })() : ""}
   <div class="list">${movs.map(movItem).join("") || emptyBox("Sem movimentos.")}</div>
   ${movs.length === 60 ? '<p style="font-size:13px;color:var(--muted)">A mostrar os 60 mais recentes. Use o filtro ou exporte para ver todos.</p>' : ""}`;
 }
