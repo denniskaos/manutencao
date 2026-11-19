@@ -1425,7 +1425,20 @@ async function doPendPrint(){
    ===================================================================== */
 const VE_STOCK = () => IS_ADMIN && !!(S.equipa[ME] || {}).veStock;
 const TIPOS_MOV = { inicial:"Stock inicial", compra:"Compra", carga:"Carga p/ carrinha", devolucao:"Devolução", transferencia:"Transferência", ajuste:"Ajuste", servico:"Aplicado em obra" };
-let stkLoc = "", stkMovF = "";
+let stkLoc = "", stkMovF = "", stkPer = "mes";
+// Venda e margem de cada saída para obra: preço da linha na ordem (ou preço atual) e custo médio do artigo.
+function vendaMov(m){
+  const o = m.ordemId ? S.ots[m.ordemId] : null; const ln = o && (o.pecas || []).find(x => x.c === m.codigo);
+  const pu = ln ? unitPrice(ln) : (S.precos[m.codigo] !== undefined ? S.precos[m.codigo] : null);
+  const cu = Number((S.stk.art[m.codigo] || {}).custo) || 0; const q = Number(m.qtd) || 0;
+  const venda = pu === null ? 0 : pu * q, custo = cu * q;
+  return { pu, venda, custo, margem: venda - custo, q };
+}
+function vendasPeriodo(per, codigo){
+  const ini = per === "mes" ? today().slice(0, 7) : "";
+  return S.stk.mov.filter(m => m.tipo === "servico" && (!codigo || m.codigo === codigo) && (!ini || (m.data || "").slice(0, 7) === ini))
+    .reduce((a, m) => { const v = vendaMov(m); a.q += v.q; a.venda += v.venda; a.custo += v.custo; a.margem += v.margem; a.semPreco += v.pu === null ? 1 : 0; return a; }, { q: 0, venda: 0, custo: 0, margem: 0, semPreco: 0 });
+}
 async function loadStock(){
   if(!VE_STOCK()) return;
   try{
@@ -1469,8 +1482,15 @@ function viewStock(){
     <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
     <div class="stat"><b>${numTxt(uni("c5arm"))}</b><span>Armazém C5</span></div>
     <div class="stat"><b>${numTxt(carr)}</b><span>Nas carrinhas</span></div>
-    <div class="stat"><b style="font-size:22px">${eur(valor)}</b><span>Valor a custo</span></div>
+    <div class="stat"><b style="font-size:22px">${eur(valor)}</b><span>Valor do stock a custo</span></div>
   </div>
+  ${(() => { const v = vendasPeriodo(stkPer); return `<div class="chips" style="margin:12px 0 6px"><button class="chip ${stkPer==="mes"?"on":""}" onclick="stkPer='mes';render()">Este mês</button><button class="chip ${stkPer==="tudo"?"on":""}" onclick="stkPer='tudo';render()">Desde o início</button></div>
+  <div class="stats">
+    <div class="stat"><b>${numTxt(v.q)}</b><span>Unidades aplicadas</span></div>
+    <div class="stat"><b style="font-size:22px">${eur(v.venda)}</b><span>Total vendido</span></div>
+    <div class="stat"><b style="font-size:22px">${eur(v.custo)}</b><span>Custo estimado</span></div>
+    <div class="stat"><b style="font-size:22px;color:${v.margem < 0 ? "var(--red)" : "var(--green)"}">${eur(v.margem)}</b><span>Margem estimada</span></div>
+  </div>${v.semPreco ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${v.semPreco} saída(s) sem preço de venda — defina o preço em Equipa → Materiais.</div>` : ""}`; })()}
   <div class="actions" style="margin:0 0 12px;flex-wrap:wrap">
     <button class="btn pri" onclick="openMov('compra')">+ Compra</button>
     <button class="btn" onclick="openMov('carga')">🚐 Carga p/ carrinha</button>
@@ -1571,6 +1591,7 @@ function openStockArt(c){
     <div class="grid2"><label class="f"><span>Stock mínimo no armazém</span><input id="sa_min" inputmode="decimal" value="${numTxt(Number(a.minimo) || 0)}"></label>
     <label class="f"><span>Custo médio (€)</span><input id="sa_custo" inputmode="decimal" value="${a.custo !== "" && a.custo != null ? String(Math.round(Number(a.custo) * 100) / 100).replace(".", ",") : ""}"></label></div>
     <div class="actions"><button class="btn" onclick="closeSheet();openMov('compra','${esc(c)}')">+ Compra</button><button class="btn" onclick="closeSheet();openMov('carga','${esc(c)}')">🚐 Carga</button><span class="sp"></span><button class="btn pri" onclick="saveStockArt('${esc(c)}')">Guardar</button></div>
+    ${(() => { const v = vendasPeriodo("tudo", c); return v.q ? `<div class="panel"><div class="parts"><div class="part"><span class="n">Aplicado em obra</span><span class="mono">${numTxt(v.q)}</span></div><div class="part"><span class="n">Total vendido</span><span class="mono">${eur(v.venda)}</span></div><div class="part"><span class="n">Custo estimado</span><span class="mono">${eur(v.custo)}</span></div><div class="part" style="font-weight:700"><span class="n">Margem estimada</span><span class="mono">${eur(v.margem)}</span></div></div></div>` : ""; })()}
     ${Object.keys(porPredio).length ? `<h3>Aplicado por prédio (pela app)</h3><div class="panel"><div class="parts">${Object.entries(porPredio).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="part"><span class="n">${esc(cName(k))}</span><span class="mono">${numTxt(v)}</span></div>`).join("")}</div></div>` : ""}`);
 }
 async function saveStockArt(c){
@@ -1586,13 +1607,14 @@ function stockExport(){
   const head = ["Código", "Descrição", ...locs.map(l => l.nome), "Total", "Stock mínimo", "Estado", "Custo médio (€)", "Valor a custo (€)"];
   const rows = arts.map(a => { const t = locs.reduce((s, l) => s + ((Q[l.id] || {})[a.codigo] || 0), 0); const arm = (Q.principal || {})[a.codigo] || 0;
     return [a.codigo, a.nome, ...locs.map(l => n((Q[l.id] || {})[a.codigo] || 0)), n(t), n(a.minimo), arm < (Number(a.minimo) || 0) ? "REPOR" : "OK", a.custo !== "" && a.custo != null ? n(a.custo) : "", a.custo !== "" && a.custo != null ? n(t * Number(a.custo)) : ""].map(cell).join(";"); });
-  const mh = ["Data", "Tipo", "Código", "Descrição", "Quantidade", "De", "Para", "Ordem", "Edifício", "Fornecedor", "Documento", "Preço unit. (€)", "Observações", "Registado por"];
-  const mr = S.stk.mov.slice().sort((a,b) => (a.data||"").localeCompare(b.data||"") || a.id - b.id).map(m => [fmtDate(m.data), TIPOS_MOV[m.tipo] || m.tipo, m.codigo, (S.mat[m.codigo] || {}).nome || "", n(m.qtd), m.origem ? locNome(m.origem) : "", m.destino ? locNome(m.destino) : "", m.ordemId && S.ots[m.ordemId] ? numOt(S.ots[m.ordemId]) : "", m.condoId ? cName(m.condoId) : "", m.fornecedor, m.documento, m.preco ? n(m.preco) : "", m.obs, m.criadoPor ? nm(m.criadoPor) : ""].map(cell).join(";"));
-  download(`stock-${today()}.csv`, "﻿" + ["STOCK A " + fmtDate(today()), head.map(cell).join(";"), ...rows, "", "MOVIMENTOS", mh.map(cell).join(";"), ...mr].join("\r\n"), "text/csv;charset=utf-8");
+  const mh = ["Data", "Tipo", "Código", "Descrição", "Quantidade", "De", "Para", "Ordem", "Edifício", "Fornecedor", "Documento", "Preço compra unit. (€)", "Preço venda unit. (€)", "Total vendido (€)", "Custo estimado (€)", "Margem estimada (€)", "Observações", "Registado por"];
+  const mr = S.stk.mov.slice().sort((a,b) => (a.data||"").localeCompare(b.data||"") || a.id - b.id).map(m => [fmtDate(m.data), TIPOS_MOV[m.tipo] || m.tipo, m.codigo, (S.mat[m.codigo] || {}).nome || "", n(m.qtd), m.origem ? locNome(m.origem) : "", m.destino ? locNome(m.destino) : "", m.ordemId && S.ots[m.ordemId] ? numOt(S.ots[m.ordemId]) : "", m.condoId ? cName(m.condoId) : "", m.fornecedor, m.documento, m.preco ? n(m.preco) : "", ...(m.tipo === "servico" ? (v => [v.pu === null ? "" : n(v.pu), n(v.venda), n(v.custo), n(v.margem)])(vendaMov(m)) : ["", "", "", ""]), m.obs, m.criadoPor ? nm(m.criadoPor) : ""].map(cell).join(";"));
+  const tm = vendasPeriodo("mes"), tt = vendasPeriodo("tudo");
+  download(`stock-${today()}.csv`, "﻿" + ["STOCK A " + fmtDate(today()), head.map(cell).join(";"), ...rows, "", "VENDAS", [cell(""), cell("Unidades aplicadas"), cell("Total vendido (€)"), cell("Custo estimado (€)"), cell("Margem estimada (€)")].join(";"), [cell("Este mês"), cell(n(tm.q)), cell(n(tm.venda)), cell(n(tm.custo)), cell(n(tm.margem))].join(";"), [cell("Desde o início"), cell(n(tt.q)), cell(n(tt.venda)), cell(n(tt.custo)), cell(n(tt.margem))].join(";"), "", "MOVIMENTOS", mh.map(cell).join(";"), ...mr].join("\r\n"), "text/csv;charset=utf-8");
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
