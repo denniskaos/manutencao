@@ -38,16 +38,16 @@ const COLS = {
   condominios: ["id","codigo","nome","morada","nif","fracoes","admin","contacto","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes"],
 };
 const NULLABLE = new Set(["equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
 const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o)) continue; let v = o[k]; if(NULLABLE.has(k) && (v === "" || v === undefined)) v = null; if(k === "periodo" || k === "tempo") v = Number(v) || 0; r[snake(k)] = v; } return r; }
+function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o)) continue; let v = o[k]; if(NULLABLE.has(k) && (v === "" || v === undefined)) v = null; if(k === "periodo" || k === "tempo") v = Number(v) || 0; if(k === "deslocacoes") v = (v === "" || v === undefined) ? 1 : (Number(v) || 0); r[snake(k)] = v; } return r; }
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
-const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{} };
+const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{}, tarifas:{ deslocacao: 0, hora: 0 } };
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
@@ -121,7 +121,11 @@ async function loadAll(uid){
   if(!me){ mode = "noprofile"; render(); return; }
   if(!me.ativo){ mode = "inactive"; render(); return; }
   IS_ADMIN = me.papel === "admin";
-  if(IS_ADMIN){ const { data: pr } = await sb.from("materiais_precos").select("*"); S.precos = Object.fromEntries((pr || []).map(x => [x.codigo, Number(x.preco)])); }
+  if(IS_ADMIN){
+    const [{ data: pr }, { data: tf }] = await Promise.all([sb.from("materiais_precos").select("*"), sb.from("tarifas").select("*").eq("id", 1).maybeSingle()]);
+    S.precos = Object.fromEntries((pr || []).map(x => [x.codigo, Number(x.preco)]));
+    if(tf) S.tarifas = { deslocacao: Number(tf.deslocacao) || 0, hora: Number(tf.hora) || 0 };
+  }
   mode = "ok";
   subscribeRealtime();
   render();
@@ -275,6 +279,16 @@ const unitPrice = x => (x.p !== undefined && x.p !== "" && x.p !== null) ? Numbe
 const lineTotal = x => { const u = unitPrice(x); return u === null ? null : u * (Number(x.q) || 0); };
 const partsTotal = pc => pc.reduce((t, x) => t + (lineTotal(x) || 0), 0);
 const parsePrice = v => { const n = parseFloat(String(v).replace(/\s|€/g, "").replace(",", ".")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
+const nDesloc = o => (o.deslocacoes === "" || o.deslocacoes === undefined || o.deslocacoes === null) ? 1 : Number(o.deslocacoes) || 0;
+const r2 = v => Math.round(v * 100) / 100;
+function valores(o){
+  const mat = r2(partsTotal(o.pecas || []));
+  const horas = (Number(o.tempo) || 0) / 60;
+  const mo = r2(horas * S.tarifas.hora);
+  const nd = nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
+  return { mat, mo, nd, desl, total: r2(mat + mo + desl) };
+}
+const fmtTempo = t => `${Math.floor((t||0)/60)} h ${pad((t||0)%60)} min`;
 const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
 
 /* ---------- WhatsApp ---------- */
@@ -442,6 +456,11 @@ function viewEquipa(){
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
+  <h3>Tarifas</h3>
+  <div class="panel"><div class="grid2">
+    <label class="f" style="margin:0"><span>Deslocação (€ por deslocação)</span><input inputmode="decimal" value="${String(S.tarifas.deslocacao).replace(".", ",")}" onchange="setTarifa('deslocacao', this.value)"></label>
+    <label class="f" style="margin:0"><span>Mão de obra (€ por hora)</span><input inputmode="decimal" value="${String(S.tarifas.hora).replace(".", ",")}" onchange="setTarifa('hora', this.value)"></label>
+  </div></div>
   <h3>Materiais do armazém <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
     <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
@@ -613,6 +632,14 @@ async function setPreco(codigo, v){
   if(preco === null) delete S.precos[codigo]; else S.precos[codigo] = preco;
   toast("Preço guardado: " + (S.mat[codigo] || {}).nome + (preco === null ? " sem preço" : " " + eur(preco)));
 }
+async function setTarifa(k, v){
+  const n = parsePrice(v); if(n === null){ toast("Valor inválido."); return; }
+  const row = { id: 1, ...S.tarifas, [k]: n };
+  const { error } = await sb.from("tarifas").upsert(row);
+  if(error) return writeErr(error);
+  S.tarifas = { deslocacao: row.deslocacao, hora: row.hora }; toast("Tarifa guardada: " + eur(n));
+}
+function setDesloc(id, v){ const n = Math.max(0, parseInt(v) || 0); updOt(id, { deslocacoes: n }); }
 function setPartPrice(id, i, v){
   const o = S.ots[id]; if(!o) return; const p = parsePrice(v);
   const pecas = (o.pecas || []).map((x, j) => { if(j !== i) return x; const y = { ...x }; if(p === null || (x.c && S.precos[x.c] === p)) delete y.p; else y.p = p; return y; });
@@ -629,9 +656,9 @@ function exportJSON(){
   download(`manutencao-${today()}.json`, JSON.stringify(data, null, 1), "application/json");
 }
 function exportCSV(){
-  const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Valor materiais (€)","Tempo (min)","Notas"];
+  const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Materiais (€)","Mão de obra (€)","Deslocações","Deslocação (€)","Total (€)","Notas"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), partsTotal(o.pecas||[]).toFixed(2).replace(".", ","), o.tempo, o.notas].map(cell).join(";"); });
+  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, ...(v => [v.mat, v.mo, v.nd, v.desl, v.total].map((x, k) => k === 2 ? x : x.toFixed(2).replace(".", ",")))(valores(o)), o.notas].map(cell).join(";"); });
   download(`ordens-${today()}.csv`, "﻿" + [head.map(cell).join(";"), ...rows].join("\r\n"), "text/csv;charset=utf-8");
 }
 
@@ -952,6 +979,13 @@ function openOt(id){
       <div class="panel"><b>Tempo gasto</b>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="t_h" type="number" min="0" value="${Math.floor((o.tempo||0)/60)}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> h
         <input id="t_m" type="number" min="0" max="59" value="${(o.tempo||0)%60}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> min</div></div>
+      ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
+        <div class="parts" style="margin-top:6px">
+          <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
+          <div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h</span></span><span class="mono">${eur(v.mo)}</span></div>
+          <div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>
+          <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
+        </div></div>`; })() : ""}
       <label class="f"><span>Notas do técnico</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="O que foi encontrado, o que foi feito, o que fica por fazer…">${esc(o.notas)}</textarea></label>
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px">✅ Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${IS_ADMIN||locked?`<button class="btn" onclick="printOt('${id}')">🖨️ Imprimir</button>`:""}<span class="sp"></span>
@@ -988,6 +1022,7 @@ function reportText(id){
   if((o.checklist||[]).length){ L.push("", "VERIFICAÇÕES"); o.checklist.forEach(x => L.push((x.ok ? "[x] " : "[ ] ") + x.t)); }
   if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q + (IS_ADMIN && lineTotal(x) !== null ? "  " + eur(unitPrice(x)) + "/un = " + eur(lineTotal(x)) : ""))); if(IS_ADMIN) L.push("Total materiais: " + eur(partsTotal(o.pecas))); }
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
+  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat), "Mão de obra (" + fmtTempo(o.tempo) + " × " + eur(S.tarifas.hora) + "/h): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
   return L.join("\n");
@@ -1023,6 +1058,11 @@ async function printOt(id){
     ${pc.length ? (IS_ADMIN
       ? `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:130px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x)!==null?eur(unitPrice(x)):"—"}</td><td style="text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total materiais</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>`
       : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
+    ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
+      <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
+      <tr><td>Mão de obra — ${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/hora</td><td style="text-align:right">${eur(v.mo)}</td></tr>
+      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>
+      <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     <div class="sig"><div>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</div><div>O Responsável do Condomínio</div></div>
@@ -1043,7 +1083,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
