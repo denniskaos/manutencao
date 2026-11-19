@@ -542,6 +542,30 @@ function genPlans(k){
 }
 
 let condoPend = false;
+// Localidade de cada prédio a partir da morada (freguesias juntas à localidade principal).
+const LOCALIDADES = [
+  ["Freamunde", ["freamunde"]],
+  ["Vizela", ["vizela"]],
+  ["Marco de Canaveses", ["marco de canaveses"]],
+  ["Lousada", ["lousada", "lustosa", "lodares", "silvares", "barrosas", "sousela", "covas - lsd", "covas -lsd"]],
+  ["Felgueiras", ["felgueiras", "idaes", "margaride", "pedreira", "revinhade"]],
+  ["Penafiel", ["penafiel", "guilhufe", "urro", "irivo", "galegos", "marecos", "rio de moinhos"]],
+  ["Paredes", ["paredes", "lordelo", "cristelo", "madalena", "castelões de cepeda", "casteloes de cepeda", "rebordosa"]],
+  ["Paços de Ferreira", ["pacos de ferreira", "pacos ferreira", "carvalhosa", "figueiro", "raimonda", "codessos", "ferreira"]],
+  ["Valongo", ["valongo", "alfena", "ermesinde"]],
+  ["Gondomar", ["rio tinto", "sao pedro da cova", "gondomar"]],
+  ["Maia", ["aguas santas", "maia"]],
+  ["Guimarães", ["guimaraes", "moreira de conegos"]],
+  ["Famalicão", ["riba d'ave", "riba d ave", "riba de ave", "famalicao"]],
+  ["Santo Tirso", ["santo tirso", "s. martinho", "sao martinho"]],
+];
+const semAcento = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function localidade(c){
+  const m = String(c.morada || ""); const cp = /\d{4}\s*-\s*\d{3}\s*,?\s*(.+)$/.exec(m) || /\b\d{4}\b\s*-?\s*([^\d,]+)$/.exec(m);
+  const partes = [cp ? cp[1] : "", m.split(",").pop(), m];
+  for(const parte of partes){ const t = semAcento(parte); if(!t.trim()) continue; for(const [nome, chaves] of LOCALIDADES) if(chaves.some(k => t.includes(semAcento(k)))) return nome; }
+  return "Outras";
+}
 function viewCondos(){
   const mine = myOts();
   const pendOf = {}; for(const o of mine) if(o.estado !== "concluida"){ const c = condoOf(o); pendOf[c] = (pendOf[c] || 0) + 1; }
@@ -555,9 +579,10 @@ function viewCondos(){
   if(!list.length) body = emptyBox(Object.keys(S.condos).length ? "Nenhum condomínio encontrado." : "Ainda não há condomínios.");
   else if(q || list.length <= 15) body = `<div class="pgrp plain"><div class="plist">${list.map(row).join("")}</div></div>`;
   else {
-    const g = {}; for(const c of list) (g[zona(c)] ||= []).push(c);
-    body = Object.entries(g).map(([z, cs]) => { const key = "cz:" + z; const aberto = grpOpen.has(key); const np = cs.reduce((a, c) => a + (pendOf[c.id] ? 1 : 0), 0); const t = terra(cs);
-      return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${key}', this.open)"><summary><span class="pg-t"><span class="mono" style="color:var(--accent)">${esc(z)}</span>${t ? " · " + esc(t) : ""}</span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
+    const g = {}; for(const c of list) (g[localidade(c)] ||= []).push(c);
+    body = Object.entries(g).sort((a, b) => a[0] === "Outras" ? 1 : b[0] === "Outras" ? -1 : b[1].length - a[1].length).map(([z, cs]) => { const key = "cz:" + z; const aberto = grpOpen.has(key); const np = cs.reduce((a, c) => a + (pendOf[c.id] ? 1 : 0), 0);
+      const cods = [...new Set(cs.map(zona))].join(", ");
+      return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${esc(z)} <span class="mono" style="color:var(--muted);font-weight:400;font-size:12px">${esc(cods)}</span></span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
   }
   return `<h2>Condomínios <span class="mono" style="font-size:14px;color:var(--muted);margin-right:auto;margin-left:8px">${Object.keys(S.condos).length}</span>${IS_ADMIN?'<button class="btn pri sm" onclick="editCondo()">+ Novo</button>':""}</h2>
   <div class="chips"><button class="chip ${!condoPend?"on":""}" onclick="condoPend=false;render()">Todos</button><button class="chip ${condoPend?"on":""}" onclick="condoPend=true;render()">Com ordens pendentes <span class="mono" style="opacity:.7">${nPend}</span></button></div>
