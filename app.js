@@ -550,7 +550,8 @@ const LOCALIDADES = [
   ["Felgueiras", ["felgueiras", "idaes", "margaride", "pedreira", "revinhade"]],
   ["Penafiel", ["penafiel", "guilhufe", "urro", "irivo", "galegos", "marecos", "rio de moinhos"]],
   ["Paredes", ["paredes", "lordelo", "cristelo", "madalena", "castelões de cepeda", "casteloes de cepeda", "rebordosa"]],
-  ["Paços de Ferreira", ["freamunde", "pacos de ferreira", "pacos ferreira", "carvalhosa", "figueiro", "raimonda", "codessos", "ferreira"]],
+  ["Freamunde", ["freamunde"]],
+  ["Paços de Ferreira", ["pacos de ferreira", "pacos ferreira", "carvalhosa", "figueiro", "raimonda", "codessos", "ferreira"]],
   ["Porto", ["valongo", "alfena", "ermesinde", "rio tinto", "sao pedro da cova", "gondomar", "aguas santas", "maia", "santo tirso", "s. martinho", "sao martinho", "porto"]],
 ];
 const semAcento = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
