@@ -16,7 +16,6 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 html,body{overscroll-behavior-y:none}
-header{padding-top:calc(14px + env(safe-area-inset-top))}
 nav{padding-bottom:env(safe-area-inset-bottom)}
 .toast{bottom:calc(86px + env(safe-area-inset-bottom))}
 .login{max-width:380px;margin:40px auto;padding:0 18px}
@@ -41,7 +40,7 @@ nav{padding-bottom:env(safe-area-inset-bottom)}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
 button,input,select,textarea{font:inherit;color:inherit}
 .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
-header{background:var(--head);color:#fff;padding:14px 18px 12px;position:sticky;top:0;z-index:5}
+header{background:var(--head);color:#fff;padding:calc(14px + env(safe-area-inset-top)) 18px 12px;position:sticky;top:0;z-index:5}
 header .row{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:860px;margin:0 auto}
 header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:9px}
 header h1 .dot{width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block}
@@ -176,7 +175,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=16"></script>
-<script type="module" src="app.js?v=16"></script>
+<script src="config.js?v=17"></script>
+<script type="module" src="app.js?v=17"></script>
 </body>
 </html>
