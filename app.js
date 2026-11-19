@@ -47,7 +47,7 @@ function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
-const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{} };
+const S = { condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{} };
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
@@ -121,6 +121,7 @@ async function loadAll(uid){
   if(!me){ mode = "noprofile"; render(); return; }
   if(!me.ativo){ mode = "inactive"; render(); return; }
   IS_ADMIN = me.papel === "admin";
+  if(IS_ADMIN){ const { data: pr } = await sb.from("materiais_precos").select("*"); S.precos = Object.fromEntries((pr || []).map(x => [x.codigo, Number(x.preco)])); }
   mode = "ok";
   subscribeRealtime();
   render();
@@ -268,6 +269,12 @@ function pendingPart(){
 }
 function clearPart(){ const sel = $("#p_sel"), a = $("#p_nome"), b = $("#p_qtd"); if(sel) sel.value = ""; if(a){ a.value = ""; a.style.display = matList().length ? "none" : ""; } if(b) b.value = ""; }
 function onPartSel(v){ const a = $("#p_nome"); if(!a) return; a.style.display = v === "__outro" ? "" : "none"; if(v === "__outro") a.focus(); else if(v) { const q = $("#p_qtd"); if(q && !q.value) q.value = 1; } }
+const EUR = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" });
+const eur = v => EUR.format(Number(v) || 0);
+const unitPrice = x => (x.p !== undefined && x.p !== "" && x.p !== null) ? Number(x.p) : (x.c && S.precos[x.c] !== undefined ? S.precos[x.c] : null);
+const lineTotal = x => { const u = unitPrice(x); return u === null ? null : u * (Number(x.q) || 0); };
+const partsTotal = pc => pc.reduce((t, x) => t + (lineTotal(x) || 0), 0);
+const parsePrice = v => { const n = parseFloat(String(v).replace(/\s|€/g, "").replace(",", ".")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
 const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
 
 /* ---------- WhatsApp ---------- */
@@ -437,7 +444,8 @@ function viewEquipa(){
   }).join("")}</div>
   <h3>Materiais do armazém <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${matList().map(m => `<span class="badge" style="font-size:13px;padding:5px 10px;display:inline-flex;gap:6px;align-items:center">${esc(m.nome)} <span class="mono" style="color:var(--muted)">${esc(m.codigo)}</span><button onclick="rmMat('${esc(m.codigo)}')" style="border:0;background:none;cursor:pointer;color:var(--muted);padding:0 2px" aria-label="Retirar">✕</button></span>`).join("") || '<span style="color:var(--muted)">Sem materiais.</span>'}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
+    <div class="parts">${matList().map(m => `<div class="part"><span class="n">${esc(m.nome)} <span class="mono" style="color:var(--muted);font-size:12px">${esc(m.codigo)}</span></span><input inputmode="decimal" value="${S.precos[m.codigo] !== undefined ? String(S.precos[m.codigo]).replace(".", ",") : ""}" placeholder="0,00" onchange="setPreco('${esc(m.codigo)}', this.value)" style="width:84px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff"> €<button class="btn sm" onclick="rmMat('${esc(m.codigo)}')" aria-label="Retirar">✕</button></div>`).join("") || '<span style="color:var(--muted)">Sem materiais.</span>'}</div>
     <div class="addpart" style="margin-top:10px"><input id="m_cod" placeholder="Código (ex.: LAMP-E27)" style="flex:0 0 38%;text-transform:uppercase"><input id="m_nome" placeholder="Descrição (ex.: Lâmpada E27)" style="flex:1"><button class="btn sm" onclick="addMat()">Adicionar</button></div>
   </div>
   <h3>Dados</h3>
@@ -598,6 +606,19 @@ async function rmMat(codigo){
   S.mat[codigo] = { ...m, ativo: false }; render(); toast(m.nome + " retirado da lista.");
 }
 
+async function setPreco(codigo, v){
+  const preco = parsePrice(v); if(preco === null && String(v).trim() !== ""){ toast("Preço inválido."); return; }
+  const { error } = preco === null ? await sb.from("materiais_precos").delete().eq("codigo", codigo) : await sb.from("materiais_precos").upsert({ codigo, preco });
+  if(error) return writeErr(error);
+  if(preco === null) delete S.precos[codigo]; else S.precos[codigo] = preco;
+  toast("Preço guardado: " + (S.mat[codigo] || {}).nome + (preco === null ? " sem preço" : " " + eur(preco)));
+}
+function setPartPrice(id, i, v){
+  const o = S.ots[id]; if(!o) return; const p = parsePrice(v);
+  const pecas = (o.pecas || []).map((x, j) => { if(j !== i) return x; const y = { ...x }; if(p === null || (x.c && S.precos[x.c] === p)) delete y.p; else y.p = p; return y; });
+  updOt(id, { pecas });
+}
+
 /* ---------- exportação ---------- */
 function download(name, text, type){
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click();
@@ -608,9 +629,9 @@ function exportJSON(){
   download(`manutencao-${today()}.json`, JSON.stringify(data, null, 1), "application/json");
 }
 function exportCSV(){
-  const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Notas"];
+  const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Valor materiais (€)","Tempo (min)","Notas"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, o.notas].map(cell).join(";"); });
+  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), partsTotal(o.pecas||[]).toFixed(2).replace(".", ","), o.tempo, o.notas].map(cell).join(";"); });
   download(`ordens-${today()}.csv`, "﻿" + [head.map(cell).join(";"), ...rows].join("\r\n"), "text/csv;charset=utf-8");
 }
 
@@ -925,7 +946,7 @@ function openOt(id){
         <label class="btn sm upl">📷 Adicionar<input type="file" accept="image/*" multiple onchange="addFotos('${id}', this)"></label></div>
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>
       <div class="panel"><b>Peças / materiais usados</b>
-        <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span><button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}</div>
+        <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
         ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material do armazém —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
       <div class="panel"><b>Tempo gasto</b>
@@ -965,7 +986,7 @@ function reportText(id){
   if(e || o.zona){ L.push(""); if(e) L.push("Equipamento: " + e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "")); if(o.zona) L.push("Zona: " + o.zona); }
   if(o.descricao) L.push("", "DESCRIÇÃO", o.descricao);
   if((o.checklist||[]).length){ L.push("", "VERIFICAÇÕES"); o.checklist.forEach(x => L.push((x.ok ? "[x] " : "[ ] ") + x.t)); }
-  if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q)); }
+  if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q + (IS_ADMIN && lineTotal(x) !== null ? "  " + eur(unitPrice(x)) + "/un = " + eur(lineTotal(x)) : ""))); if(IS_ADMIN) L.push("Total materiais: " + eur(partsTotal(o.pecas))); }
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
@@ -999,7 +1020,9 @@ async function printOt(id){
       ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}</table>
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
-    ${pc.length?`<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`:""}
+    ${pc.length ? (IS_ADMIN
+      ? `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:130px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x)!==null?eur(unitPrice(x)):"—"}</td><td style="text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total materiais</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>`
+      : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     <div class="sig"><div>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</div><div>O Responsável do Condomínio</div></div>
@@ -1020,7 +1043,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
