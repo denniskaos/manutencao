@@ -438,7 +438,7 @@ function grpBlock(key, label, sub, items, extra){
   const aberto = grpOpen.has(key);
   return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${label}</span><span class="badge">${items.length}</span>${sub ? `<span class="pg-s">${sub}</span>` : ""}</summary>${aberto ? `${extra || ""}<div class="plist">${items.map(o => otRow(o)).join("")}</div>` : ""}</details>`;
 }
-function grpToggle(k, open){ if(open){ if(!grpOpen.has(k)){ grpOpen.add(k); render(); } } else { grpOpen.delete(k); } }
+function grpToggle(k, open){ if(open){ if(!grpOpen.has(k)){ grpOpen.add(k); const y = window.scrollY; render(); window.scrollTo(0, y); } } else { grpOpen.delete(k); } }
 async function assignMany(key, tec){
   if(!tec) return;
   const ids = (window.__grp || {})[key] || [];
