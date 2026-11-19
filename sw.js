@@ -1,5 +1,5 @@
 // Service worker: permite instalar a aplicação e receber notificações.
-const CACHE = "manutencao-v6";
+const CACHE = "manutencao-v7";
 const SHELL = ["./", "./index.html", "./app.js", "./config.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -22,6 +22,7 @@ self.addEventListener("fetch", e => {
 self.addEventListener("push", e => {
   let d = {};
   try{ d = e.data.json(); }catch(_){ d = { title: "Manutenção", body: e.data ? e.data.text() : "" }; }
+  try{ if(typeof d.badge === "number" && self.navigator.setAppBadge) self.navigator.setAppBadge(d.badge); }catch(_){}
   e.waitUntil(self.registration.showNotification(d.title || "Manutenção", {
     body: d.body || "",
     tag: d.tag,

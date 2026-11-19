@@ -129,6 +129,7 @@ async function loadAll(uid){
   mode = "ok";
   subscribeRealtime();
   render();
+  autoReadNotifs();
   const q = new URLSearchParams(location.search).get("ordem");
   if(q && S.ots[q]){ history.replaceState(null, "", location.pathname); openOt(q); }
   checkPushState();
@@ -150,6 +151,7 @@ function subscribeRealtime(){
   });
   ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${ME}` }, p => {
     const n = fromRow(p.new); S.notifs.unshift(n);
+    if(sheetRefresh && document.visibilityState === "visible" && $("#sheet .top h4") && S.ots[n.ordemId] && $("#sheet .top h4").textContent === S.ots[n.ordemId].titulo) setTimeout(() => readNotifsForOrder(n.ordemId), 500);
     toast("🔔 " + n.titulo + ": " + n.corpo);
     try{ navigator.vibrate && navigator.vibrate([150,80,150]); }catch(e){}
     render();
@@ -172,7 +174,7 @@ async function refreshQuiet(){
     ]);
     if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)]));
     if(notifs) S.notifs = notifs.map(fromRow);
-    render();
+    render(); autoReadNotifs();
   } finally { refreshing = false; }
 }
 
@@ -665,6 +667,16 @@ function exportCSV(){
 }
 
 /* ---------- notificações (sino) ---------- */
+function markNotifsRead(ids){
+  ids = [...new Set(ids)].filter(Boolean); if(!ids.length) return;
+  S.notifs = S.notifs.map(n => ids.includes(n.id) ? { ...n, lida: true } : n); renderWho();
+  sb.from("notificacoes").update({ lida: true }).in("id", ids).then(() => {});
+}
+// Avisos de "ordem atribuída" deixam de contar quando a ordem está concluída (ou foi apagada).
+function autoReadNotifs(){
+  markNotifsRead(S.notifs.filter(n => !n.lida && n.tipo === "atrib" && n.ordemId && (!S.ots[n.ordemId] || S.ots[n.ordemId].estado === "concluida")).map(n => n.id));
+}
+function readNotifsForOrder(id){ markNotifsRead(S.notifs.filter(n => !n.lida && n.ordemId === id).map(n => n.id)); }
 function openNotifs(){
   const L = S.notifs;
   openSheet("Notificações", L.length ? `<div class="list">${L.map(n => `<div class="item" onclick="${n.ordemId && S.ots[n.ordemId] ? `openOt('${esc(n.ordemId)}')` : ""}"><div class="bar ${n.lida?"":(n.tipo==="concl"?"green":"amber")}"></div><div class="main"><div class="t" style="${n.lida?"font-weight:500":""}">${esc(n.titulo)}</div><div class="s">${esc(n.corpo)}</div></div><div class="r">${n.lida?"":'<span class="badge b-amber">Nova</span>'}<span>${fmtDT(n.criadaEm)}</span></div></div>`).join("")}</div>`
@@ -885,7 +897,7 @@ function setEstado(id, estado, fromTop){
     const tn = document.getElementById("t_notas"); if(tn && tn.value !== (o.notas||"")){ clearTimeout(notesTimer); patch.notas = tn.value; }
     const th = parseInt(val("t_h"))||0, tm = parseInt(val("t_m"))||0; if(document.getElementById("t_h")) patch.tempo = th*60+tm;
     if(pn) clearPart();
-    updOt(id, patch);
+    updOt(id, patch); readNotifsForOrder(id);
     toast(IS_ADMIN ? "Ordem concluída." : "Ordem concluída — o escritório foi avisado.");
   } else {
     updOt(id, {estado, concluida: "", concluidaEm: "", concluidoPor: ""});
@@ -943,6 +955,7 @@ function viewFoto(path){ if(URLS[path]) window.open(URLS[path], "_blank", "noope
 
 function openOt(id){
   if(!S.ots[id]) return;
+  readNotifsForOrder(id);
   const draw = () => {
     const o = S.ots[id]; if(!o) return "";
     const p = PRIOR[o.prioridade] || PRIOR.media; const ck = o.checklist || []; const done = ck.filter(c=>c.ok).length;
