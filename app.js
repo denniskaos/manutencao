@@ -1004,6 +1004,24 @@ function addPart(id){
 function rmPart(id, i){ updOt(id, {pecas: (S.ots[id].pecas||[]).filter((_,j)=>j!==i)}); }
 let notesTimer = null;
 function onNotes(id, v){ clearTimeout(notesTimer); notesTimer = setTimeout(() => { if(S.ots[id] && S.ots[id].notas !== v) updOt(id, {notas: v}, true); }, 900); }
+function saveClose(id){
+  const o = S.ots[id]; if(!o){ closeSheet(); return; }
+  clearTimeout(notesTimer);
+  const patch = {};
+  const tn = document.getElementById("t_notas"); if(tn && tn.value !== (o.notas || "")) patch.notas = tn.value;
+  if(document.getElementById("t_h")){ const t = (parseInt(val("t_h"))||0)*60 + (parseInt(val("t_m"))||0); if(t !== (o.tempo||0)) patch.tempo = t; }
+  if(isExt(o)){
+    const sel = val("x_emp"); const emp = sel === "__outra" ? val("x_emp2") : sel;
+    if(document.getElementById("x_emp") && emp !== (o.empresa || "")) patch.empresa = emp;
+    const ct = val("x_cont"); if(document.getElementById("x_cont") && ct !== (o.contactada || "")) patch.contactada = ct;
+    const rf = val("x_ref"); if(document.getElementById("x_ref") && rf !== (o.refExterna || "")) patch.refExterna = rf;
+    if((patch.contactada || o.contactada) && o.estado === "aberta") patch.estado = "curso";
+  }
+  const pend = pendingPart(); if(pend && o.estado !== "concluida"){ patch.pecas = [...(o.pecas||[]), pend]; clearPart(); }
+  if(Object.keys(patch).length) updOt(id, patch, true);
+  closeSheet();
+  toast(o.estado === "concluida" ? "Guardado." : "Guardado — a ordem continua por fechar.");
+}
 function onTempo(id){ const h = parseInt(val("t_h"))||0, m = parseInt(val("t_m"))||0; const t = h*60+m; if(S.ots[id] && S.ots[id].tempo !== t) updOt(id, {tempo: t}, true); }
 
 /* ---------- fotografias ---------- */
@@ -1058,8 +1076,8 @@ function extPanel(o, id, can){
     <label class="f" style="margin:0 0 8px"><span>Empresa contactada</span>${(() => { const cur = o.empresa || eqEmp; const lst = empresasConhecidas(); const outra = cur && !lst.includes(cur);
       return `<select id="x_emp" ${can ? "" : "disabled"} onchange="if(this.value==='__outra'){document.getElementById('x_emp2').style.display='';document.getElementById('x_emp2').focus();}else{document.getElementById('x_emp2').style.display='none';setExt('${id}','empresa',this.value)}" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff"><option value="">— Escolher empresa —</option>${lst.map(e => `<option value="${esc(e)}" ${e===cur?"selected":""}>${esc(e)}</option>`).join("")}<option value="__outra" ${outra?"selected":""}>Outra (escrever)…</option></select>
       <input id="x_emp2" value="${esc(outra ? cur : "")}" placeholder="Nome da empresa" ${can ? "" : "disabled"} onchange="setExt('${id}','empresa',this.value)" style="${outra?"":"display:none;"}width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">`; })()}</label>
-    <div class="grid2"><label class="f" style="margin:0"><span>Contactada em</span>${inp("contactada", o.contactada, 'type="date"')}</label>
-    <label class="f" style="margin:0"><span>Nº / referência do pedido</span>${inp("refExterna", o.refExterna, 'placeholder="Opcional"')}</label></div>
+    <div class="grid2"><label class="f" style="margin:0"><span>Contactada em</span>${inp("contactada", o.contactada, 'id="x_cont" type="date"')}</label>
+    <label class="f" style="margin:0"><span>Nº / referência do pedido</span>${inp("refExterna", o.refExterna, 'id="x_ref" placeholder="Opcional"')}</label></div>
     ${can && !o.contactada ? `<button class="btn sm" style="margin-top:8px" onclick="setExt('${id}','contactada','${today()}')">📞 Contactei hoje</button>` : ""}
     ${o.concluida ? `<div style="margin-top:8px;font-size:14px">✅ Resolvida pela empresa em <b>${fmtDate(o.concluida)}</b>${dias !== null ? ` · ${dias} ${dias === 1 ? "dia" : "dias"} após o contacto` : ""}</div>` : ""}</div>`;
 }
@@ -1124,6 +1142,7 @@ function openOt(id){
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px">✅ Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn" onclick="printOt('${id}')">🖨️ Imprimir</button>`:""}<span class="sp"></span>
+      ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')">💾 Guardar e sair</button>` : ""}
       ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">${isExt(o) ? "Resolvida pela empresa" : "Concluir ordem"}</button>`}</div>`;
   };
   openSheet((numOt(S.ots[id]) ? `<span class="mono" style="color:var(--muted);font-weight:500">${numOt(S.ots[id])}</span> ` : "") + esc(S.ots[id].titulo), draw(), () => {
@@ -1360,7 +1379,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
