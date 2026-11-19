@@ -48,7 +48,7 @@ header h1 .dot{width:10px;height:10px;border-radius:2px;background:var(--accent)
 .sync{font-size:12px;color:#b8c2c8}
 /* Montagem de app: barra de cima e menu de baixo parados; só o meio desliza. */
 html,body{height:100%}
-body{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+body{display:flex;flex-direction:column;height:100vh;height:100dvh;height:var(--apph,100dvh);overflow:hidden}
 main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:16px max(14px, calc((100% - 860px) / 2)) 28px;box-sizing:border-box;width:100%}
 nav{position:relative;flex:0 0 auto;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:center;z-index:5}
 nav .in{display:flex;width:100%;max-width:860px}
@@ -218,7 +218,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=52"></script>
-<script type="module" src="app.js?v=52"></script>
+<script src="config.js?v=53"></script>
+<script type="module" src="app.js?v=53"></script>
 </body>
 </html>

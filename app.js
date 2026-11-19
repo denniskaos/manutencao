@@ -91,6 +91,20 @@ function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.f
 /* ---------- arranque e sessão ---------- */
 // iPhone: impedir zoom com dois dedos e com duplo toque (a app fica do tamanho do ecrã).
 for(const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+// iPhone (app no ecrã principal): o sistema desconta a barra das horas à altura e deixa um vazio em baixo.
+// Usamos a altura real do ecrã.
+function alturaApp(){
+  const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  if (!isIOS || !standalone) { document.documentElement.style.removeProperty("--apph"); return; }
+  const retrato = matchMedia("(orientation: portrait)").matches;
+  const ecra = retrato ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+  const h = Math.max(window.innerHeight, document.documentElement.clientHeight, ecra);
+  document.documentElement.style.setProperty("--apph", h + "px");
+}
+alturaApp();
+addEventListener("resize", alturaApp);
+addEventListener("orientationchange", () => setTimeout(alturaApp, 300));
+addEventListener("pageshow", alturaApp);
 const scroller = () => document.getElementById("app") || document.scrollingElement;
 let lastTouchEnd = 0;
 if(isIOS) document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
