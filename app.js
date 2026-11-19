@@ -94,8 +94,8 @@ async function start(){
       reg.update().catch(() => {});
       document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") reg.update().catch(() => {}); });
       // Quando chega uma versão nova da aplicação, recarrega uma vez para a usar
-      let reloaded = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => { if(reloaded || !navigator.serviceWorker.controller) return; reloaded = true; if(!$("#scrim").classList.contains("open")) location.reload(); });
+      let reloaded = false; const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if(reloaded || !hadController || !navigator.serviceWorker.controller) return; reloaded = true; if(!$("#scrim").classList.contains("open")) location.reload(); });
     }catch(e){ console.warn(e); }
   }
   const { data: { session } } = await sb.auth.getSession();
@@ -391,7 +391,7 @@ function viewInicio(){
     const prox = mine.filter(o => o.estado !== "concluida" && o.data && o.data > t);
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     const first = ((S.equipa[ME]||{}).nome||"").split(" ")[0];
-    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}
+    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
     <div class="stats">
       ${statCard(hoje.length, "Para hoje / em atraso", "otFilter='ativas';go('ordens')", true)}
       ${statCard(mine.filter(o=>o.estado==="curso").length, "Em curso", "otFilter='curso';go('ordens')")}
@@ -471,7 +471,7 @@ function viewEquipa(){
     const mine = ots.filter(o => o.tecnico === x.id);
     const pend = mine.filter(o => o.estado !== "concluida").length;
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
-    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
+    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · ✍️ ${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
   <h3>Tarifas</h3>
   <div class="panel"><div class="grid2">
@@ -540,11 +540,56 @@ function openPerfil(){
     <div class="actions"><span class="sp"></span><button class="btn pri" onclick="savePerfil()">Guardar</button></div>
     <h3>Notificações</h3>
     <div class="panel" style="font-size:14px">${pushOn ? "✅ Ativas neste telemóvel." : `Desativadas neste telemóvel. <button class="btn sm pri" onclick="enablePush()">Ativar</button>`}</div>
+    <h3>Assinatura</h3>
+    <div class="panel">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Assine com o dedo (ou com o rato) dentro do quadro. A assinatura é colocada nos relatórios impressos das suas ordens.</div>
+      ${me.assinatura ? `<div style="margin-bottom:8px"><span style="font-size:13px;color:var(--muted)">Assinatura atual:</span><br><img src="${esc(me.assinatura)}" alt="" style="max-height:70px;max-width:100%;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px"></div>` : ""}
+      <canvas id="sigPad" style="width:100%;height:170px;background:#fff;border:1px dashed #b9b2a4;border-radius:10px;touch-action:none;display:block"></canvas>
+      <div class="actions" style="margin-top:8px"><button class="btn" onclick="sigClear()">Limpar</button>${me.assinatura?`<button class="btn danger" onclick="sigRemove()">Apagar assinatura</button>`:""}<span class="sp"></span><button class="btn pri" onclick="sigSave()">Guardar assinatura</button></div>
+    </div>
     <h3>Palavra-passe</h3>
     <label class="f"><span>Nova palavra-passe</span><input id="p_pw" type="password" autocomplete="new-password" placeholder="Pelo menos 6 caracteres"></label>
     <div class="actions"><span class="sp"></span><button class="btn" onclick="changePw()">Mudar palavra-passe</button></div>
     <h3>Sessão</h3>
     <div class="actions"><span style="font-size:13px;color:var(--muted)">${esc(me.email||"")}</span><span class="sp"></span><button class="btn danger" onclick="logout()">Terminar sessão</button></div>`);
+  setTimeout(sigInit, 50);
+}
+/* ---------- assinatura ---------- */
+let sigDrawn = false;
+function sigInit(){
+  const c = document.getElementById("sigPad"); if(!c) return;
+  const r = c.getBoundingClientRect(), dpr = Math.max(1, window.devicePixelRatio || 1);
+  c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  const ctx = c.getContext("2d"); ctx.scale(dpr, dpr); ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#0b2a6b";
+  sigDrawn = false; let down = false, last = null;
+  const pos = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.onpointerdown = e => { down = true; c.setPointerCapture(e.pointerId); last = pos(e); ctx.beginPath(); ctx.arc(last[0], last[1], 1.1, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); sigDrawn = true; e.preventDefault(); };
+  c.onpointermove = e => { if(!down) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last = p; e.preventDefault(); };
+  c.onpointerup = c.onpointercancel = () => { down = false; };
+}
+function sigClear(){ const c = document.getElementById("sigPad"); if(!c) return; c.getContext("2d").clearRect(0, 0, c.width, c.height); sigDrawn = false; }
+function sigTrim(c){
+  const ctx = c.getContext("2d"); const { width: w, height: h } = c; const d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for(let y = 0; y < h; y++) for(let x = 0; x < w; x++) if(d[(y * w + x) * 4 + 3] > 10){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+  if(x1 < 0) return null;
+  const pad = 6; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1; const k = Math.min(1, 600 / cw, 220 / ch);
+  const o = document.createElement("canvas"); o.width = Math.max(1, Math.round(cw * k)); o.height = Math.max(1, Math.round(ch * k));
+  o.getContext("2d").drawImage(c, x0, y0, cw, ch, 0, 0, o.width, o.height);
+  return o.toDataURL("image/png");
+}
+async function sigSave(){
+  const c = document.getElementById("sigPad"); if(!c || !sigDrawn){ toast("Assine primeiro dentro do quadro."); return; }
+  const url = sigTrim(c); if(!url){ toast("Assine primeiro dentro do quadro."); return; }
+  const { error } = await sb.from("perfis").update({ assinatura: url }).eq("id", ME);
+  if(error) return writeErr(error);
+  S.equipa[ME] = { ...S.equipa[ME], assinatura: url }; toast("Assinatura guardada."); openPerfil();
+}
+async function sigRemove(){
+  const { error } = await sb.from("perfis").update({ assinatura: "" }).eq("id", ME);
+  if(error) return writeErr(error);
+  S.equipa[ME] = { ...S.equipa[ME], assinatura: "" }; toast("Assinatura apagada."); openPerfil();
 }
 async function savePerfil(){
   const me = S.equipa[ME]; const nome = val("p_nome"); const telefone = val("p_tel");
@@ -1126,7 +1171,7 @@ function reportHtml(o, withPhotos = true){
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
-    <div class="sig"><div>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</div><div>O Responsável do Condomínio</div></div>
+    ${(() => { const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura; return `<div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</span></div><div><span>O Responsável do Condomínio<br>&nbsp;</span></div></div>`; })()}
     <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
 }
 async function printHtml(html){
@@ -1220,7 +1265,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
