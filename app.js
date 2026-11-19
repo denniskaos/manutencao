@@ -469,11 +469,48 @@ function viewOrdens(){
   <div class="list" id="lst">${list.length ? list.map(o=>otItem(o, !!condoF)).join("") : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
 }
 
+let prevF = "", prevTec = "", prevQ = "", prevOpen = null;
+const semanaDe = d => { const x = new Date(d + "T12:00:00"); const dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); return iso(x); };
 function viewPrev(){
-  const list = Object.values(S.plans).filter(p => !condoF || condoOf(p) === condoF).sort((a,b) => planNext(a).localeCompare(planNext(b)));
+  const t = today();
+  const all = Object.values(S.plans).filter(p => !condoF || condoOf(p) === condoF)
+    .filter(p => !prevTec || (prevTec === "-" ? !p.tecnico : p.tecnico === prevTec))
+    .filter(p => !prevQ || hit([cName(condoOf(p)), p.titulo, nm(p.tecnico)].join(" "), prevQ));
+  const dd = p => diffDays(planNext(p), t);
+  const cnt = { atraso: all.filter(p => dd(p) < 0).length, semana: all.filter(p => dd(p) <= 7).length, mes: all.filter(p => dd(p) <= 30).length, "": all.length };
+  if(prevF === null || prevF === undefined) prevF = "";
+  const list = all.filter(p => prevF === "atraso" ? dd(p) < 0 : prevF === "semana" ? dd(p) <= 7 : prevF === "mes" ? dd(p) <= 30 : true).sort((a,b) => planNext(a).localeCompare(planNext(b)) || cName(condoOf(a)).localeCompare(cName(condoOf(b)), "pt", {numeric:true}));
+  const groups = []; const gi = {};
+  for(const p of list){ const n = planNext(p); const k = n < t ? "atraso" : semanaDe(n); if(!(k in gi)){ gi[k] = groups.length; groups.push([k, []]); } groups[gi[k]][1].push(p); }
+  if(prevOpen === null) prevOpen = new Set(prevF === "atraso" || prevF === "semana" ? groups.map(g => g[0]) : []);
+  const tecs = [...new Set(Object.values(S.plans).map(p => p.tecnico || ""))];
+  const fmtCurto = d => d.slice(8, 10) + "/" + d.slice(5, 7);
   return `<h2>Manutenção preventiva <button class="btn pri sm" onclick="editPlan()">+ Novo plano</button></h2>
-  ${condoFilterSel()}
-  <div class="list">${list.length ? list.map(p=>planItem(p, !!condoF)).join("") : emptyBox("Crie planos periódicos — ex.: ronda mensal às áreas comuns, verificação trimestral do hidropressor — com um técnico responsável. Quando estiverem a vencer, aparecem no Painel para criar a ordem com um toque.", '<button class="btn pri" onclick="editPlan()">+ Criar plano</button>')}</div>`;
+  <div class="chips">${[["atraso","Em atraso"],["semana","Esta semana"],["mes","Próximos 30 dias"],["","Todas"]].map(([k,l]) => `<button class="chip ${prevF===k?"on":""}" onclick="prevF='${k}';prevOpen=null;render()">${l} <span class="mono" style="opacity:.7">${cnt[k]}</span></button>`).join("")}</div>
+  <div class="grid2" style="gap:8px"><input class="search" placeholder="Procurar prédio…" value="${esc(prevQ)}" oninput="prevQ=this.value;prevOpen=null;renderListOnly()" style="margin:0">
+  <select class="search" style="margin:0" onchange="prevTec=this.value;prevOpen=null;render()"><option value="">Todos os técnicos</option>${tecs.includes("") ? `<option value="-" ${prevTec==="-"?"selected":""}>Sem técnico</option>` : ""}${pessoasAgrupadas(prevTec)}</select></div>
+  ${condoF ? `<div class="note" style="margin-top:8px">Filtrado por ${esc(cName(condoF))} <button class="btn sm" onclick="condoF='';render()">Ver todos</button></div>` : ""}
+  <div id="lst" style="margin-top:10px">${groups.length ? groups.map(([k, ps]) => {
+    const label = k === "atraso" ? "Em atraso" : (() => { const fim = addDays(k, 6); return `Semana de ${fmtCurto(k)} a ${fmtCurto(fim)}${k === semanaDe(t) ? " (esta semana)" : ""}`; })();
+    const porTec = {}; for(const p of ps){ const n = p.tecnico ? nm(p.tecnico).split(" ")[0] : "sem técnico"; porTec[n] = (porTec[n] || 0) + 1; }
+    const semOrdem = ps.filter(p => !openOtForPlan(p.id));
+    const aberto = prevOpen.has(k) || !!prevQ || !!condoF;
+    return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="prevToggle('${k}', this.open)"><summary><span class="pg-t ${k === "atraso" ? "warnTxt" : ""}">${label}</span><span class="badge">${ps.length}</span><span class="pg-s">${Object.entries(porTec).map(([n, c]) => `${esc(n)} ${c}`).join(" · ")}</span></summary>
+      ${semOrdem.length ? `<div class="actions" style="margin:6px 0"><span style="font-size:13px;color:var(--muted)">${semOrdem.length} sem ordem criada</span><span class="sp"></span><button class="btn sm" onclick="event.stopPropagation();genPlans('${k}')">Criar ${semOrdem.length} ${semOrdem.length === 1 ? "ordem" : "ordens"}</button></div>` : ""}
+      <div class="plist">${ps.map(p => { const st = planStatus(p); const o = openOtForPlan(p.id); return `<div class="prow" onclick="openPlan('${p.id}')"><span class="mono pd">${fmtCurto(planNext(p))}</span><span class="pn">${esc(cName(condoOf(p)))}<small>${esc(p.titulo)}${p.tecnico ? " · " + esc(nm(p.tecnico)) : ""}</small></span>${o ? `<span class="badge b-blue">Ordem ${esc(numOt(o) || "")}</span>` : `<span class="badge ${st[1]}">${st[0]}</span>`}</div>`; }).join("")}</div></details>`;
+  }).join("") : emptyBox(Object.keys(S.plans).length ? (prevF === "semana" || prevF === "atraso" ? "Nada para esta semana. 👍" : "Nenhum plano com estes filtros.") + (prevF ? ` <button class="btn sm" onclick="prevF='';render()">Ver todas</button>` : "") : "Crie planos periódicos — ex.: ronda mensal às áreas comuns — com um técnico responsável.", Object.keys(S.plans).length ? "" : '<button class="btn pri" onclick="editPlan()">+ Criar plano</button>')}</div>`;
+}
+function prevToggle(k, open){ if(!prevOpen) prevOpen = new Set(); if(open) prevOpen.add(k); else prevOpen.delete(k); }
+function genPlans(k){
+  const t = today();
+  const ps = Object.values(S.plans).filter(p => { const n = planNext(p); return (k === "atraso" ? n < t : n >= t && semanaDe(n) === k) && !openOtForPlan(p.id); })
+    .filter(p => !condoF || condoOf(p) === condoF).filter(p => !prevTec || (prevTec === "-" ? !p.tecnico : p.tecnico === prevTec));
+  for(const p of ps){
+    const tec = p.tecnico || "";
+    put("ots", {id:newId(), titulo:p.titulo, condoId:condoOf(p), equipId:p.equipId||"", zona:p.zona||"", tecnico:tec, tipo:"preventiva", prioridade:"media", estado:"aberta", data: planNext(p) < t ? t : planNext(p), descricao:"", solicitante:"", planId:p.id, checklist:(p.checklist||[]).map(x=>({t:x, ok:false})), pecas:[], fotos:[], notas:"", tempo:0, criada: t, criadaEm: nowIso(), criadoPor: ME, atribuida: tec ? t : "", atribuidaEm: tec ? nowIso() : "", atribuidoPor: tec ? ME : ""});
+  }
+  toast(ps.length + (ps.length === 1 ? " ordem criada." : " ordens criadas.") + (ps.some(p => !p.tecnico) ? " Algumas ficaram por atribuir." : ""));
+  render();
 }
 
 function viewCondos(){
@@ -531,7 +568,7 @@ function render(){
 }
 function renderListOnly(){
   const tmp = document.createElement("div");
-  tmp.innerHTML = (tab === "ordens" ? viewOrdens() : viewCondos());
+  tmp.innerHTML = (tab === "ordens" ? viewOrdens() : tab === "prev" ? viewPrev() : viewCondos());
   const nl = tmp.querySelector("#lst"); if(nl) $("#lst").innerHTML = nl.innerHTML;
 }
 
@@ -1625,12 +1662,13 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
+Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, prevToggle, genPlans, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
