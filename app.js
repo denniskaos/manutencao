@@ -1484,7 +1484,7 @@ function viewStock(){
     <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
     <div class="stat"><b>${numTxt(uni("c5arm"))}</b><span>Armazém C5</span></div>
     <div class="stat"><b>${numTxt(carr)}</b><span>Nas carrinhas</span></div>
-    <div class="stat"><b style="font-size:22px">${eur(valor)}</b><span>Valor do stock a custo</span></div>
+    <div class="stat"><b>${numTxt(uni("principal") + uni("c5arm") + carr)}</b><span>Stock total · ${eur(valor)} a custo</span></div>
   </div>
   ${(() => { const v = vendasPeriodo(stkPer); return `<div class="chips" style="margin:12px 0 6px"><button class="chip ${stkPer==="mes"?"on":""}" onclick="stkPer='mes';render()">Este mês</button><button class="chip ${stkPer==="tudo"?"on":""}" onclick="stkPer='tudo';render()">Desde o início</button></div>
   <div class="stats">
