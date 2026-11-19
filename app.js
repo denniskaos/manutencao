@@ -91,6 +91,13 @@ function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.f
 /* ---------- arranque e sessão ---------- */
 // iPhone: impedir zoom com dois dedos e com duplo toque (a app fica do tamanho do ecrã).
 for(const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+// iPhone: depois de fechar o teclado ou de o ecrã mudar de tamanho, voltar a assentar os elementos fixos (menu do fundo).
+if(isIOS){
+  const reassentar = () => setTimeout(() => { window.scrollTo(window.scrollX, window.scrollY); document.body.style.minHeight = "100.01vh"; requestAnimationFrame(() => { document.body.style.minHeight = ""; }); }, 60);
+  document.addEventListener("focusout", e => { if(e.target && e.target.matches && e.target.matches("input,textarea,select")) reassentar(); });
+  if(window.visualViewport){ let vh = window.visualViewport.height; window.visualViewport.addEventListener("resize", () => { if(window.visualViewport.height > vh) reassentar(); vh = window.visualViewport.height; }); }
+  window.addEventListener("orientationchange", reassentar);
+}
 let lastTouchEnd = 0;
 if(isIOS) document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
 async function start(){
