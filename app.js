@@ -372,7 +372,7 @@ function planItem(p, hideCondo){
 }
 const emptyBox = (msg, btn) => `<div class="empty">${msg}${btn?`<br>${btn}`:""}</div>`;
 const condoFilterSel = () => `<select class="search" onchange="condoF=this.value;render()"><option value="">Todos os condomínios</option>${condosSorted().map(c=>`<option value="${c.id}" ${c.id===condoF?"selected":""}>${esc(cLabel(c))}</option>`).join("")}</select>`;
-const techFilterSel = () => IS_ADMIN ? `<select class="search" onchange="techF=this.value;render()"><option value="">Todos os técnicos</option><option value="-" ${techF==="-"?"selected":""}>Por atribuir</option>${tecnicos().map(t=>`<option value="${t.id}" ${t.id===techF?"selected":""}>${esc(t.nome)}${t.papel==="admin"?" (administrativo)":""}</option>`).join("")}</select>` : "";
+const techFilterSel = () => IS_ADMIN ? `<select class="search" onchange="techF=this.value;render()"><option value="">Todas as pessoas</option><option value="-" ${techF==="-"?"selected":""}>Por atribuir</option>${pessoasAgrupadas(techF)}</select>` : "";
 const statCard = (n, label, onclick, warn) => `<div class="stat ${warn&&n?"warn":""}" onclick="${onclick}"><b>${n}</b><span>${label}</span></div>`;
 
 /* ---------- vistas ---------- */
@@ -530,7 +530,9 @@ const equipOptions = (condoId, sel) => {
   const list = Object.values(S.equip).filter(e => e.condoId === condoId).sort((a,b)=>a.nome.localeCompare(b.nome, "pt"));
   return `<option value="">${condoId ? "— Nenhum (área comum / geral) —" : "— Escolha primeiro o condomínio —"}</option>` + list.map(e => `<option value="${e.id}" ${e.id===sel?"selected":""}>${esc(e.nome)}${e.local?" — "+esc(e.local):""}</option>`).join("");
 };
-const techOptions = sel => `<option value="">— Por atribuir —</option>` + tecnicos().map(t => `<option value="${t.id}" ${t.id===sel?"selected":""}>${esc(t.nome)}${t.papel==="admin"?" (administrativo)":""}</option>`).join("") + (sel && !(S.equipa[sel] && S.equipa[sel].ativo) ? `<option value="${esc(sel)}" selected>${esc(nm(sel))}</option>` : "");
+const pessoasAgrupadas = sel => { const opt = t => `<option value="${t.id}" ${t.id===sel?"selected":""}>${esc(t.nome)}</option>`; const tec = tecnicos().filter(t => t.papel !== "admin"), adm = tecnicos().filter(t => t.papel === "admin");
+  return (tec.length ? `<optgroup label="Técnicos">${tec.map(opt).join("")}</optgroup>` : "") + (adm.length ? `<optgroup label="Administrativos">${adm.map(opt).join("")}</optgroup>` : ""); };
+const techOptions = sel => `<option value="">— Por atribuir —</option>` + pessoasAgrupadas(sel) + (sel && !(S.equipa[sel] && S.equipa[sel].ativo) ? `<option value="${esc(sel)}" selected>${esc(nm(sel))}</option>` : "");
 function onCondoChange(){ const s = $("#f_eq"); if(s) s.innerHTML = equipOptions(val("f_condo"), ""); }
 
 /* ---------- perfil próprio ---------- */
@@ -1104,7 +1106,7 @@ function openOt(id){
     return `<div class="seg" style="margin-bottom:12px">${Object.entries(ESTADOS).map(([k,l]) => k==="concluida"
         ? `<button class="${o.estado===k?"on":""}" onclick="${o.estado===k||!mine?"":`setEstado('${id}','concluida',true)`}">${l}</button>`
         : `<button class="${o.estado===k?"on":""}" onclick="setEstado('${id}','${k}')">${l}</button>`).join("")}</div>
-      ${IS_ADMIN?`<div class="panel"><label class="f" style="margin:0"><span>Técnico atribuído</span><select onchange="assignOt('${id}', this.value)">${techOptions(o.tecnico)}</select></label>
+      ${IS_ADMIN?`<div class="panel"><label class="f" style="margin:0"><span>${isExt(o) ? "Responsável" : "Atribuída a"}</span><select onchange="assignOt('${id}', this.value)">${techOptions(o.tecnico)}</select></label>
         ${o.tecnico && o.tecnico !== ME && !locked && phoneOf(o.tecnico) ? `<div style="margin-top:10px">${waBtn(phoneOf(o.tecnico), waOrdem(o), "Enviar também por WhatsApp")}</div>` : ""}</div>`:""}
       <div class="panel"><dl class="kv">
         <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap">👥 condóminos</a>` : ""}</dd>
@@ -1169,7 +1171,7 @@ function reportText(id){
   if(c.nif) L.push("NIF: " + c.nif);
   L.push("", "Ordem " + numLabel(o) + ": " + o.titulo, "Estado: " + ESTADOS[o.estado], "Tipo: " + (TIPOS_OT[o.tipo]||o.tipo) + "   Prioridade: " + (PRIOR[o.prioridade]||PRIOR.media)[0]);
   if(o.solicitante) L.push("Pedido por: " + o.solicitante);
-  if(o.tecnico) L.push("Técnico: " + nm(o.tecnico));
+  if(o.tecnico) L.push((isExt(o) ? "Responsável: " : "Técnico: ") + nm(o.tecnico));
   L.push("Data prevista: " + fmtDate(o.data) + (o.concluida ? "   Concluída: " + fmtDate(o.concluida) : ""));
   if(e || o.zona){ L.push(""); if(e) L.push("Equipamento: " + e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "")); if(o.zona) L.push("Zona: " + o.zona); }
   if(o.descricao) L.push("", "DESCRIÇÃO", o.descricao);
@@ -1283,7 +1285,7 @@ function openBatchPrint(){
     <div class="chips"><button class="chip" onclick="setWeek(-1)">Semana passada</button><button class="chip" onclick="setWeek(0)">Esta semana</button></div>
     <div class="grid2"><label class="f"><span>De (data de conclusão)</span><input type="date" id="b_de" value="${de}" onchange="batchCount()"></label>
     <label class="f"><span>Até</span><input type="date" id="b_ate" value="${ate}" onchange="batchCount()"></label></div>
-    <label class="f"><span>Técnico</span><select id="b_tec" onchange="batchCount()"><option value="">Todos os técnicos</option>${tecnicos().map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join("")}</select></label>
+    <label class="f"><span>Pessoa</span><select id="b_tec" onchange="batchCount()"><option value="">Todas as pessoas</option>${pessoasAgrupadas("")}</select></label>
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_res" checked> Página de resumo por técnico</label>
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_rel" checked> Relatórios completos (um por página)</label>
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input type="checkbox" id="b_fot" checked> Incluir fotografias nos relatórios</label>
