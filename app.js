@@ -342,7 +342,7 @@ function renderWho(){
   const nu = S.notifs.filter(n => !n.lida).length;
   document.title = (nu ? "(" + nu + ") " : "") + "Manutenção";
   try{ if(navigator.setAppBadge) nu ? navigator.setAppBadge(nu) : navigator.clearAppBadge(); }catch(e){}
-  el.innerHTML = `<button class="bell" onclick="openNotifs()" aria-label="Notificações">🔔${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer">${IS_ADMIN?"Administrativo":"Técnico"}</span>`;
+  el.innerHTML = `<button class="bell" onclick="openNotifs()" aria-label="Notificações">🔔${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer">${IS_ADMIN?"Administrativo":"Técnico"}</span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)">👤</button>`;
   el.querySelector(".who-n").textContent = (S.equipa[ME] || {}).nome || "";
 }
 
