@@ -1047,14 +1047,17 @@ function rmFoto(id, path){
 function viewFoto(path){ if(URLS[path]) window.open(URLS[path], "_blank", "noopener"); }
 
 /* ---------- avarias tratadas por empresa externa (ex.: elevadores) ---------- */
-const empresasConhecidas = () => [...new Set([...Object.values(S.equip).map(e => e.empresa), ...Object.values(S.ots).map(o => o.empresa)].map(x => (x || "").trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, "pt"));
+const EMPRESAS_ELEV = ["Kone","Nogueira e Macedo","Schindler","Enor","Caroldi","Orona","Otis","Schmitt","Pinto & Cruz","TK Elevadores","Elevcom","Grupo Nor","Liftirso","Nova Elevadores"];
+const empresasConhecidas = () => [...new Set([...EMPRESAS_ELEV, ...Object.values(S.equip).map(e => e.empresa), ...Object.values(S.ots).map(o => o.empresa)].map(x => (x || "").trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, "pt"));
 function extPanel(o, id, can){
   const eqEmp = (S.equip[o.equipId] || {}).empresa || "";
   const inp = (k, v, attrs) => `<input ${attrs} value="${esc(v || "")}" ${can ? "" : "disabled"} onchange="setExt('${id}','${k}',this.value)" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">`;
   const dias = o.contactada && o.concluida ? diasEntre(o.contactada, o.concluida) : null;
   return `<div class="panel" style="background:var(--blue-bg)"><b>Acompanhamento — empresa externa</b>
     <div style="font-size:13px;color:var(--muted);margin:2px 0 8px">Sem horas, deslocações nem materiais: regista-se o contacto com a empresa e quando ficou resolvido.</div>
-    <label class="f" style="margin:0 0 8px"><span>Empresa contactada</span>${inp("empresa", o.empresa || eqEmp, 'list="dl_emp" placeholder="Ex.: empresa de manutenção dos elevadores"')}<datalist id="dl_emp">${empresasConhecidas().map(e => `<option value="${esc(e)}">`).join("")}</datalist></label>
+    <label class="f" style="margin:0 0 8px"><span>Empresa contactada</span>${(() => { const cur = o.empresa || eqEmp; const lst = empresasConhecidas(); const outra = cur && !lst.includes(cur);
+      return `<select id="x_emp" ${can ? "" : "disabled"} onchange="if(this.value==='__outra'){document.getElementById('x_emp2').style.display='';document.getElementById('x_emp2').focus();}else{document.getElementById('x_emp2').style.display='none';setExt('${id}','empresa',this.value)}" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff"><option value="">— Escolher empresa —</option>${lst.map(e => `<option value="${esc(e)}" ${e===cur?"selected":""}>${esc(e)}</option>`).join("")}<option value="__outra" ${outra?"selected":""}>Outra (escrever)…</option></select>
+      <input id="x_emp2" value="${esc(outra ? cur : "")}" placeholder="Nome da empresa" ${can ? "" : "disabled"} onchange="setExt('${id}','empresa',this.value)" style="${outra?"":"display:none;"}width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">`; })()}</label>
     <div class="grid2"><label class="f" style="margin:0"><span>Contactada em</span>${inp("contactada", o.contactada, 'type="date"')}</label>
     <label class="f" style="margin:0"><span>Nº / referência do pedido</span>${inp("refExterna", o.refExterna, 'placeholder="Opcional"')}</label></div>
     ${can && !o.contactada ? `<button class="btn sm" style="margin-top:8px" onclick="setExt('${id}','contactada','${today()}')">📞 Contactei hoje</button>` : ""}
