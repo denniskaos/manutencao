@@ -459,7 +459,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}
+  return `<h2>Painel <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}${copiaBanner()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -611,8 +611,10 @@ function viewEquipa(){
     <div class="addpart" style="margin-top:10px"><input id="m_cod" placeholder="Código (ex.: LAMP-E27)" style="flex:0 0 38%;text-transform:uppercase"><input id="m_nome" placeholder="Descrição (ex.: Lâmpada E27)" style="flex:1"><button class="btn sm" onclick="addMat()">Adicionar</button></div>
   </div>
   <h3>Dados</h3>
-  <div class="panel" style="font-size:14px">O plano gratuito do Supabase não faz cópias de segurança. Exporte os dados de vez em quando (por exemplo, uma vez por mês) e guarde o ficheiro.
-  <div class="actions" style="margin-top:10px"><button class="btn" onclick="exportJSON()">Exportar tudo (JSON)</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
+  <div class="panel" style="font-size:14px">O plano gratuito do Supabase <b>não faz cópias de segurança</b>. Faça uma cópia <b>uma vez por semana</b> e guarde o ficheiro fora do computador (pen, Google Drive, OneDrive ou e-mail para si próprio). Se um dia for preciso, os dados repõem-se a partir deste ficheiro.
+    <div style="margin-top:8px;color:var(--muted)">Última cópia neste aparelho: <b>${ultimaCopia() ? fmtDate(ultimaCopia()) : "nunca"}</b> · Fotografias: ${Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0)} (cerca de ${Math.round(Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0) * 0.18)} MB de 1 000 MB gratuitos)</div>
+    <div style="margin-top:6px;color:var(--muted)">O Supabase suspende projetos gratuitos sem uso durante uma semana — em férias, abra a app pelo menos uma vez por semana.</div>
+  <div class="actions" style="margin-top:10px"><button class="btn pri" onclick="backupCompleto(this)">💾 Fazer cópia de segurança</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
 }
 
 function render(){
@@ -854,6 +856,31 @@ function setPartPrice(id, i, v){
 function download(name, text, type){
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const ultimaCopia = () => { try{ return localStorage.getItem("ultimaCopia") || ""; }catch(e){ return ""; } };
+async function backupCompleto(btn){
+  if(!IS_ADMIN) return;
+  if(btn){ btn.disabled = true; btn.textContent = "A preparar…"; }
+  const tabelas = ["condominios", "condominos", "equipamentos", "planos", "ordens", "materiais", "materiais_precos", "tarifas", "tarifas_tecnico", "perfis", ...(VE_STOCK() ? ["stock_locais", "stock_artigos", "stock_mov"] : [])];
+  const out = { app: "Manutenção FLAT Condomínios", versao: 1, exportado_em: nowIso(), exportado_por: nm(ME), tabelas: {} }; const falhas = [];
+  for(const t of tabelas){
+    const rows = []; let from = 0;
+    try{ for(;;){ const { data, error } = await sb.from(t).select("*").range(from, from + 999); if(error) throw error; rows.push(...data); if(data.length < 1000) break; from += 1000; } out.tabelas[t] = rows; }
+    catch(e){ falhas.push(t); }
+  }
+  const nf = Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0);
+  out.fotos = { quantidade: nf, nota: "As fotografias ficam no Supabase Storage (pasta 'fotos'); este ficheiro guarda só os caminhos." };
+  download(`copia-seguranca-manutencao-${today()}.json`, JSON.stringify(out), "application/json");
+  try{ localStorage.setItem("ultimaCopia", today()); }catch(e){}
+  if(btn){ btn.disabled = false; btn.textContent = "💾 Fazer cópia de segurança"; }
+  toast(falhas.length ? "Cópia feita, mas sem: " + falhas.join(", ") : "Cópia de segurança guardada (" + Object.values(out.tabelas).reduce((a, r) => a + r.length, 0) + " registos).");
+  render();
+}
+function copiaBanner(){
+  if(!IS_ADMIN) return "";
+  const u = ultimaCopia(); const dias = u ? diffDays(today(), u) : null;
+  if(dias !== null && dias < 7) return "";
+  return `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between">${u ? `A última cópia de segurança foi há ${dias} dias.` : "Ainda não fez nenhuma cópia de segurança neste aparelho."} <button class="btn sm" onclick="backupCompleto(this)">💾 Fazer agora</button></div>`;
 }
 function exportJSON(){
   const data = { exportado_em: nowIso(), condominios: Object.values(S.condos), equipamentos: Object.values(S.equip), planos: Object.values(S.plans), ordens: Object.values(S.ots), equipa: Object.values(S.equipa).map(({id,nome,email,telefone,papel,ativo}) => ({id,nome,email,telefone,papel,ativo})) };
@@ -1177,9 +1204,9 @@ function compress(file){
   return new Promise((res, rej) => {
     const img = new Image(); const u = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1600; let { width: w, height: h } = img; const k = Math.min(1, max / Math.max(w, h)); w = Math.round(w*k); h = Math.round(h*k);
+      const max = 1280; let { width: w, height: h } = img; const k = Math.min(1, max / Math.max(w, h)); w = Math.round(w*k); h = Math.round(h*k);
       const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(u); c.toBlob(b => b ? res(b) : rej(new Error("imagem")), "image/jpeg", 0.75);
+      URL.revokeObjectURL(u); c.toBlob(b => b ? res(b) : rej(new Error("imagem")), "image/jpeg", 0.7);
     };
     img.onerror = () => { URL.revokeObjectURL(u); rej(new Error("Formato de imagem não suportado.")); };
     img.src = u;
@@ -1729,7 +1756,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
