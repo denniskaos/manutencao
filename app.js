@@ -40,7 +40,7 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra"],
 };
 const NULLABLE = new Set(["equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
@@ -49,7 +49,9 @@ function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
-const S = { cdm:{}, condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{}, tarifas:{ deslocacao: 0, hora: 0 } };
+const S = { cdm:{}, condos:{}, equip:{}, plans:{}, ots:{}, equipa:{}, notifs:[], mat:{}, precos:{}, tarifas:{ deslocacao: 0, hora: 0, extraA: 50, extraE: 75 }, tarTec:{}, stk:{ locais:{}, art:{}, mov:[] } };
+const EXTRAS = { A: "Manutenção A", E: "Manutenção E" };
+const extraVal = k => k === "A" ? S.tarifas.extraA : k === "E" ? S.tarifas.extraE : 0;
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
@@ -137,8 +139,11 @@ async function loadAll(uid){
   if(IS_ADMIN){
     const [{ data: pr }, { data: tf }] = await Promise.all([sb.from("materiais_precos").select("*"), sb.from("tarifas").select("*").eq("id", 1).maybeSingle()]);
     S.precos = Object.fromEntries((pr || []).map(x => [x.codigo, Number(x.preco)]));
-    if(tf) S.tarifas = { deslocacao: Number(tf.deslocacao) || 0, hora: Number(tf.hora) || 0 };
+    if(tf) S.tarifas = { deslocacao: Number(tf.deslocacao) || 0, hora: Number(tf.hora) || 0, extraA: tf.extra_a != null ? Number(tf.extra_a) : 50, extraE: tf.extra_e != null ? Number(tf.extra_e) : 75, novas: "extra_a" in tf };
+    const { data: tt } = await sb.from("tarifas_tecnico").select("*");
+    S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
+  await loadStock();
   mode = "ok";
   subscribeRealtime();
   render();
@@ -158,6 +163,7 @@ function subscribeRealtime(){
       render();
     });
   }
+  if(VE_STOCK()) for(const t of ["stock_mov", "stock_locais", "stock_artigos"]) ch.on("postgres_changes", { event: "*", schema: "public", table: t }, stockChanged);
   ch.on("postgres_changes", { event: "*", schema: "public", table: "materiais" }, p => {
     if(p.eventType === "DELETE"){ if(p.old && p.old.codigo) delete S.mat[p.old.codigo]; } else S.mat[p.new.codigo] = p.new;
     render();
@@ -296,14 +302,17 @@ const partsTotal = pc => pc.reduce((t, x) => t + (lineTotal(x) || 0), 0);
 const parsePrice = v => { const n = parseFloat(String(v).replace(/\s|€/g, "").replace(",", ".")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
 const nDesloc = o => (o.deslocacoes === "" || o.deslocacoes === undefined || o.deslocacoes === null) ? 1 : Number(o.deslocacoes) || 0;
 const r2 = v => Math.round(v * 100) / 100;
+const moTxt = (o, v) => v.tt ? `${fmtTempo(o.tempo)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
-  if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, total: 0 };
+  if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
   const mat = r2(partsTotal(o.pecas || []));
   const horas = (Number(o.tempo) || 0) / 60;
   const so = o.soMaterial === true;
-  const mo = so ? 0 : r2(horas * S.tarifas.hora);
+  const tt = S.tarTec[o.tecnico]; const min = Number(o.tempo) || 0;
+  const mo = so ? 0 : tt ? r2(min > 0 ? tt.hora1 + Math.max(0, min - 60) / 60 * tt.hora : 0) : r2(horas * S.tarifas.hora);
   const nd = so ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
-  return { mat, mo, nd, desl, so, total: r2(mat + mo + desl) };
+  const ex = so ? 0 : r2(extraVal(o.extra));
+  return { mat, mo, nd, desl, so, ex, exTipo: so ? "" : (o.extra || ""), tt, total: r2(mat + mo + desl + ex) };
 }
 const fmtTempo = t => `${Math.floor((t||0)/60)} h ${pad((t||0)%60)} min`;
 const numOt = o => o && o.numero ? String(o.numero).padStart(4, "0") : "";
@@ -341,14 +350,16 @@ const ICONS = {
   ordens:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
   prev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>',
   condos:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 8h3M8 12h3M8 16h3"/></svg>',
+  stock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>',
   equipa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>'
 };
 const tabsFor = () => IS_ADMIN
-  ? [["inicio","Início"],["ordens","Ordens"],["prev","Preventiva"],["condos","Condomínios"],["equipa","Equipa"]]
+  ? [["inicio","Início"],["ordens","Ordens"],["prev","Preventiva"],["condos","Condomínios"],...(VE_STOCK() ? [["stock","Stock"]] : []),["equipa","Equipa"]]
   : [["inicio","Hoje"],["ordens","As minhas"],["condos","Condomínios"]];
 function go(t){ tab = t; q = ""; render(); window.scrollTo(0,0); }
 function renderNav(){
   if(mode !== "ok"){ $("#nav").innerHTML = ""; return; }
+  $("#nav").classList.toggle("many", tabsFor().length > 5);
   $("#nav").innerHTML = tabsFor().map(([k,l]) => `<button class="${tab===k?"on":""}" onclick="go('${k}')">${ICONS[k]}${esc(l)}</button>`).join("");
 }
 function renderWho(){
@@ -492,7 +503,9 @@ function viewEquipa(){
   <div class="panel"><div class="grid2">
     <label class="f" style="margin:0"><span>Deslocação (€ por deslocação)</span><input inputmode="decimal" value="${String(S.tarifas.deslocacao).replace(".", ",")}" onchange="setTarifa('deslocacao', this.value)"></label>
     <label class="f" style="margin:0"><span>Mão de obra (€ por hora)</span><input inputmode="decimal" value="${String(S.tarifas.hora).replace(".", ",")}" onchange="setTarifa('hora', this.value)"></label>
-  </div></div>
+    <label class="f" style="margin:0"><span>Manutenção A (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraA).replace(".", ",")}" onchange="setTarifa('extraA', this.value)"></label>
+    <label class="f" style="margin:0"><span>Manutenção E (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraE).replace(".", ",")}" onchange="setTarifa('extraE', this.value)"></label>
+  </div><div style="font-size:13px;color:var(--muted);margin-top:8px">Tarifas próprias de um técnico (ex.: 1.ª hora mais cara): abra o técnico na lista acima.</div></div>
   <h3>Materiais do armazém <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
     <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
@@ -509,7 +522,8 @@ function render(){
   if(mode === "login"){ $("#app").innerHTML = viewLogin(); return; }
   if(mode !== "ok"){ $("#app").innerHTML = viewEstado(); return; }
   if(!IS_ADMIN && (tab === "prev" || tab === "equipa")) tab = "inicio";
-  const v = {inicio:viewInicio, ordens:viewOrdens, prev:viewPrev, condos:viewCondos, equipa:viewEquipa}[tab];
+  if(tab === "stock" && !VE_STOCK()) tab = "inicio";
+  const v = {inicio:viewInicio, ordens:viewOrdens, prev:viewPrev, condos:viewCondos, equipa:viewEquipa, stock:viewStock}[tab];
   const active = document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.classList.contains("search");
   $("#app").innerHTML = v();
   if(active){ const s = $("input.search"); if(s){ s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -665,10 +679,22 @@ function openPessoa(id){
     <label class="f"><span>Perfil</span><select id="e_papel" ${self?"disabled":""}><option value="tec" ${x.papel==="tec"?"selected":""}>Técnico</option><option value="admin" ${x.papel==="admin"?"selected":""}>Administrativo</option></select></label></div>
     ${self?'<p style="font-size:13px;color:var(--muted);margin-top:-4px">Não pode mudar o seu próprio perfil.</p>':""}
     <div class="actions"><span class="sp"></span><button class="btn pri" onclick="savePessoa('${id}')">Guardar</button></div>
+    ${x.papel === "tec" ? (() => { const tt = S.tarTec[id]; return `<h3>Tarifa de mão de obra</h3>
+    <div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">Deixe em branco para usar a tarifa normal (${eur(S.tarifas.hora)}/h). Só os administrativos veem.</div>
+      <div class="grid2"><label class="f" style="margin:0"><span>1.ª hora (€)</span><input id="tt_h1" inputmode="decimal" value="${tt ? String(tt.hora1).replace(".", ",") : ""}" placeholder="Ex.: 40"></label>
+      <label class="f" style="margin:0"><span>Horas seguintes (€/h)</span><input id="tt_h" inputmode="decimal" value="${tt ? String(tt.hora).replace(".", ",") : ""}" placeholder="Ex.: 20"></label></div>
+      <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="setTarTec('${id}')">Guardar tarifa</button></div></div>`; })() : ""}
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="armDelete(this,()=>setAtivo('${id}',${!x.ativo}))">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
+}
+async function setTarTec(id){
+  const a = val("tt_h1"), b = val("tt_h");
+  if(!a && !b){ const { error } = await sb.from("tarifas_tecnico").delete().eq("user_id", id); if(error) return writeErr(error); delete S.tarTec[id]; render(); toast("Usa a tarifa normal."); return; }
+  const h1 = parsePrice(a), h = parsePrice(b); if(h1 === null || h === null){ toast("Preencha os dois valores."); return; }
+  const { error } = await sb.from("tarifas_tecnico").upsert({ user_id: id, hora1: h1, hora: h }); if(error) return writeErr(error);
+  S.tarTec[id] = { hora1: h1, hora: h }; render(); toast("Tarifa guardada.");
 }
 async function savePessoa(id){
   const x = S.equipa[id]; const nome = val("e_nome"), telefone = val("e_tel"); const papel = id === ME ? x.papel : val("e_papel");
@@ -713,10 +739,10 @@ async function setPreco(codigo, v){
 }
 async function setTarifa(k, v){
   const n = parsePrice(v); if(n === null){ toast("Valor inválido."); return; }
-  const row = { id: 1, ...S.tarifas, [k]: n };
-  const { error } = await sb.from("tarifas").upsert(row);
+  const t = { ...S.tarifas, [k]: n };
+  const { error } = await sb.from("tarifas").upsert({ id: 1, deslocacao: t.deslocacao, hora: t.hora, ...(t.novas ? { extra_a: t.extraA, extra_e: t.extraE } : {}) });
   if(error) return writeErr(error);
-  S.tarifas = { deslocacao: row.deslocacao, hora: row.hora }; toast("Tarifa guardada: " + eur(n));
+  S.tarifas = t; render(); toast("Tarifa guardada: " + eur(n));
 }
 function setSoMaterial(id, on){ updOt(id, { soMaterial: !!on }); toast(on ? "Marcada como só entrega de material." : "Desmarcada."); }
 function setDesloc(id, v){ const n = Math.max(0, parseInt(v) || 0); updOt(id, { deslocacoes: n }); }
@@ -736,9 +762,9 @@ function exportJSON(){
   download(`manutencao-${today()}.json`, JSON.stringify(data, null, 1), "application/json");
 }
 function exportCSV(){
-  const head = ["Nº","Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Materiais (€)","Mão de obra (€)","Deslocações","Deslocação (€)","Total (€)","Notas"];
+  const head = ["Nº","Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Materiais (€)","Mão de obra (€)","Deslocações","Deslocação (€)","Manutenção extra","Extra (€)","Total (€)","Notas"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [numOt(o), o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, ...(v => [v.mat, v.mo, v.nd, v.desl, v.total].map((x, k) => k === 2 ? x : x.toFixed(2).replace(".", ",")))(valores(o)), o.notas].map(cell).join(";"); });
+  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [numOt(o), o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, ...(v => [v.mat, v.mo, v.nd, v.desl, v.exTipo ? EXTRAS[v.exTipo] : "", v.ex, v.total].map((x, k) => k === 2 || k === 4 ? x : x.toFixed(2).replace(".", ",")))(valores(o)), o.notas].map(cell).join(";"); });
   download(`ordens-${today()}.csv`, "﻿" + [head.map(cell).join(";"), ...rows].join("\r\n"), "text/csv;charset=utf-8");
 }
 
@@ -1019,6 +1045,7 @@ function addPart(id){
 function rmPart(id, i){ updOt(id, {pecas: (S.ots[id].pecas||[]).filter((_,j)=>j!==i)}); }
 let notesTimer = null;
 function onNotes(id, v){ clearTimeout(notesTimer); notesTimer = setTimeout(() => { if(S.ots[id] && S.ots[id].notas !== v) updOt(id, {notas: v}, true); }, 900); }
+function setExtra(id, k){ updOt(id, { extra: k }); toast(k ? EXTRAS[k] + " registada." : "Sem manutenção extra."); }
 function saveClose(id){
   const o = S.ots[id]; if(!o){ closeSheet(); return; }
   clearTimeout(notesTimer);
@@ -1144,14 +1171,17 @@ function openOt(id){
         ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material do armazém —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
       <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
+      ${!("extra" in o) ? "" : `<div class="panel"><b>Manutenção extra</b>
+        <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
       <div class="panel"><b>Tempo gasto</b>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="t_h" type="number" min="0" value="${Math.floor((o.tempo||0)/60)}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> h
         <input id="t_m" type="number" min="0" max="59" value="${(o.tempo||0)%60}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> min</div></div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
-          ${v.so ? `<div class="part"><span class="n" style="color:var(--muted)">Só entrega de material — sem deslocação nem mão de obra</span></div>` : `<div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h</span></span><span class="mono">${eur(v.mo)}</span></div>
+          ${v.so ? `<div class="part"><span class="n" style="color:var(--muted)">Só entrega de material — sem deslocação nem mão de obra</span></div>` : `<div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${moTxt(o, v)}</span></span><span class="mono">${eur(v.mo)}</span></div>
           <div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>`}
+          ${v.ex ? `<div class="part"><span class="n">${EXTRAS[v.exTipo]}</span><span class="mono">${eur(v.ex)}</span></div>` : ""}
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
@@ -1192,8 +1222,9 @@ function reportText(id){
   if((o.checklist||[]).length){ L.push("", "VERIFICAÇÕES"); o.checklist.forEach(x => L.push((x.ok ? "[x] " : "[ ] ") + x.t)); }
   if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q + (IS_ADMIN && lineTotal(x) !== null ? "  " + eur(unitPrice(x)) + "/un = " + eur(lineTotal(x)) : ""))); if(IS_ADMIN) L.push("Total materiais: " + eur(partsTotal(o.pecas))); }
   if(o.soMaterial === true) L.push("", "Só entrega de material.");
+  if(o.extra && o.soMaterial !== true) L.push("", "Manutenção extra: " + EXTRAS[o.extra]);
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
-  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + fmtTempo(o.tempo) + " × " + eur(S.tarifas.hora) + "/h): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), "TOTAL: " + eur(v.total)); }
+  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
   return L.join("\n");
@@ -1245,7 +1276,7 @@ function reportHtml(o, withPhotos = true){
     <h2>Intervenção</h2>
     <table class="prkv">${row("Tipo", TIPOS_OT[o.tipo]||o.tipo)}${row("Prioridade", (PRIOR[o.prioridade]||PRIOR.media)[0])}${row("Pedido por", o.solicitante)}
       ${row("Equipamento", e ? e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "") : "")}${row("Zona / fração", o.zona)}
-      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}${o.soMaterial===true?row("Observação", "Só entrega de material"):""}</table>
+      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}${o.soMaterial===true?row("Observação", "Só entrega de material"):""}${o.extra && o.soMaterial!==true?row("Manutenção extra", EXTRAS[o.extra]):""}</table>
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
     ${pc.length ? (IS_ADMIN
@@ -1253,8 +1284,8 @@ function reportHtml(o, withPhotos = true){
       : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
     ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
       <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
-      ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/hora</td><td style="text-align:right">${eur(v.mo)}</td></tr>
-      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>`}
+      ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${moTxt(o, v)}</td><td style="text-align:right">${eur(v.mo)}</td></tr>
+      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>${v.ex ? `<tr><td>${EXTRAS[v.exTipo]}</td><td style="text-align:right">${eur(v.ex)}</td></tr>` : ""}`}
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
@@ -1321,20 +1352,20 @@ async function doBatchPrint(){
     const hrs = min => `${Math.floor(min/60)}h${pad(min%60)} <span style="color:#555">(${(min/60).toFixed(2).replace(".", ",")} h)</span>`;
     let grand = 0, gMin = 0, gDesl = 0;
     const secs = Object.entries(groups).map(([t, os]) => {
-      const sum = os.reduce((a, o) => { const v = valores(o); a.tot += v.total; a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { tot: 0, mo: 0, desl: 0, nd: 0, mat: 0, min: 0 });
+      const sum = os.reduce((a, o) => { const v = valores(o); a.tot += v.total; a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.ex += v.ex; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { tot: 0, mo: 0, desl: 0, nd: 0, mat: 0, ex: 0, min: 0 });
       grand += sum.tot; gMin += sum.min; gDesl += sum.nd;
       const byCondo = {}; for(const o of os){ const k = condoOf(o); (byCondo[k] ||= []).push(o); }
       const condoRows = Object.entries(byCondo).sort((a,b) => cName(a[0]).localeCompare(cName(b[0]), "pt", {numeric:true})).map(([cid, cos]) => {
-        const r = cos.reduce((a, o) => { const v = valores(o); a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.tot += v.total; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { mo: 0, desl: 0, nd: 0, mat: 0, tot: 0, min: 0 });
-        return `<tr><td>${esc(cName(cid))}</td><td style="text-align:center">${cos.length}</td><td>${hrs(r.min)}</td><td style="text-align:center">${r.nd}</td><td>${matsTxt(aggMats(cos)) || "—"}</td><td style="text-align:right">${eur(r.mo)}</td><td style="text-align:right">${eur(r.desl)}</td><td style="text-align:right">${eur(r.mat)}</td><td style="text-align:right"><b>${eur(r.tot)}</b></td></tr>`;
+        const r = cos.reduce((a, o) => { const v = valores(o); a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.ex += v.ex; a.tot += v.total; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { mo: 0, desl: 0, nd: 0, mat: 0, ex: 0, tot: 0, min: 0 });
+        return `<tr><td>${esc(cName(cid))}</td><td style="text-align:center">${cos.length}</td><td>${hrs(r.min)}</td><td style="text-align:center">${r.nd}</td><td>${matsTxt(aggMats(cos)) || "—"}</td><td style="text-align:right">${eur(r.mo)}</td><td style="text-align:right">${eur(r.desl)}</td><td style="text-align:right">${r.ex ? eur(r.ex) : "—"}</td><td style="text-align:right">${eur(r.mat)}</td><td style="text-align:right"><b>${eur(r.tot)}</b></td></tr>`;
       }).join("");
       return `<h2>${esc(nm(t))} <span style="font-weight:400;text-transform:none;letter-spacing:0">— ${os.length} ${os.length===1?"ordem":"ordens"} · ${Math.floor(sum.min/60)}h${pad(sum.min%60)} · ${sum.nd} ${sum.nd===1?"deslocação":"deslocações"}</span></h2>
         <table class="sm"><tr><th style="width:44px">Nº</th><th style="width:66px">Data</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:auto">Materiais</th><th style="width:62px">Horas</th><th style="width:40px;text-align:center">Desl.</th><th style="width:70px;text-align:right">Valor</th></tr>
-        ${os.map(o => { const v = valores(o); return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(o.concluida)}</td><td>${esc(cName(condoOf(o)))}</td><td>${esc(o.titulo)}${v.so?" <i>(só material)</i>":""}${v.ext?` <i>(empresa externa${o.empresa?": "+esc(o.empresa):""})</i>`:""}</td><td>${matsTxt(aggMats([o])) || "—"}</td><td>${v.so ? "—" : Math.floor((o.tempo||0)/60) + "h" + pad((o.tempo||0)%60)}</td><td style="text-align:center">${v.nd}</td><td style="text-align:right">${eur(v.total)}</td></tr>`; }).join("")}</table>
+        ${os.map(o => { const v = valores(o); return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(o.concluida)}</td><td>${esc(cName(condoOf(o)))}</td><td>${esc(o.titulo)}${v.so?" <i>(só material)</i>":""}${v.ext?` <i>(empresa externa${o.empresa?": "+esc(o.empresa):""})</i>`:""}${v.ex?` <b>+ ${EXTRAS[v.exTipo]}</b>`:""}</td><td>${matsTxt(aggMats([o])) || "—"}</td><td>${v.so ? "—" : Math.floor((o.tempo||0)/60) + "h" + pad((o.tempo||0)%60)}</td><td style="text-align:center">${v.nd}</td><td style="text-align:right">${eur(v.total)}</td></tr>`; }).join("")}</table>
         <h3 class="sub">Resumo por prédio — ${esc(nm(t))}</h3>
-        <table class="sm"><tr><th style="width:auto">Condomínio</th><th style="width:44px;text-align:center">Ordens</th><th style="width:96px">Horas</th><th style="width:44px;text-align:center">Desl.</th><th style="width:auto">Materiais</th><th style="width:72px;text-align:right">Mão de obra</th><th style="width:72px;text-align:right">Deslocação</th><th style="width:72px;text-align:right">Materiais</th><th style="width:78px;text-align:right">Total</th></tr>
+        <table class="sm"><tr><th style="width:auto">Condomínio</th><th style="width:44px;text-align:center">Ordens</th><th style="width:96px">Horas</th><th style="width:44px;text-align:center">Desl.</th><th style="width:auto">Materiais</th><th style="width:72px;text-align:right">Mão de obra</th><th style="width:72px;text-align:right">Deslocação</th><th style="width:62px;text-align:right">Extra A/E</th><th style="width:72px;text-align:right">Materiais</th><th style="width:78px;text-align:right">Total</th></tr>
         ${condoRows}
-        <tr><th colspan="2" style="text-align:right">Total ${esc(nm(t))}</th><th>${hrs(sum.min)}</th><th style="text-align:center">${sum.nd}</th><th>${matsTxt(aggMats(os)) || "—"}</th><th style="text-align:right">${eur(sum.mo)}</th><th style="text-align:right">${eur(sum.desl)}</th><th style="text-align:right">${eur(sum.mat)}</th><th style="text-align:right">${eur(sum.tot)}</th></tr></table>`;
+        <tr><th colspan="2" style="text-align:right">Total ${esc(nm(t))}</th><th>${hrs(sum.min)}</th><th style="text-align:center">${sum.nd}</th><th>${matsTxt(aggMats(os)) || "—"}</th><th style="text-align:right">${eur(sum.mo)}</th><th style="text-align:right">${eur(sum.desl)}</th><th style="text-align:right">${sum.ex ? eur(sum.ex) : "—"}</th><th style="text-align:right">${eur(sum.mat)}</th><th style="text-align:right">${eur(sum.tot)}</th></tr></table>`;
     }).join("");
     parts.push(`<div class="pr sumpage"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
       <div class="meta">${list.length} ${list.length===1?"ordem concluída":"ordens concluídas"} · ${Math.floor(gMin/60)}h${pad(gMin%60)} · ${gDesl} desl.<br>Total: <b>${eur(grand)}</b></div></div>
@@ -1389,12 +1420,183 @@ async function doPendPrint(){
   await printHtml(pages.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
 }
 
+/* =====================================================================
+   STOCK — só para quem tem acesso (perfis.ve_stock)
+   ===================================================================== */
+const VE_STOCK = () => IS_ADMIN && !!(S.equipa[ME] || {}).veStock;
+const TIPOS_MOV = { inicial:"Stock inicial", compra:"Compra", carga:"Carga p/ carrinha", devolucao:"Devolução", transferencia:"Transferência", ajuste:"Ajuste", servico:"Aplicado em obra" };
+let stkLoc = "", stkMovF = "";
+async function loadStock(){
+  if(!VE_STOCK()) return;
+  try{
+    const [{ data: l, error: e1 }, { data: a, error: e2 }] = await Promise.all([sb.from("stock_locais").select("*").order("ordem"), sb.from("stock_artigos").select("*")]);
+    if(e1 || e2) throw (e1 || e2);
+    const mov = []; let from = 0;
+    for(;;){ const { data, error } = await sb.from("stock_mov").select("*").order("id").range(from, from + 999); if(error) throw error; mov.push(...data); if(data.length < 1000) break; from += 1000; }
+    S.stk = { locais: Object.fromEntries((l || []).map(x => [x.id, fromRow(x)])), art: Object.fromEntries((a || []).map(x => [x.codigo, fromRow(x)])), mov: mov.map(fromRow), ok: true };
+  }catch(e){ console.warn("stock", e); S.stk = { locais:{}, art:{}, mov:[], ok:false }; }
+}
+let stockTimer = null;
+function stockChanged(){ clearTimeout(stockTimer); stockTimer = setTimeout(async () => { await loadStock(); if(tab === "stock") render(); if(sheetRefresh) sheetRefresh(); }, 400); }
+const locaisList = () => Object.values(S.stk.locais).filter(l => l.ativo !== false).sort((a,b) => a.ordem - b.ordem);
+const locNome = id => (S.stk.locais[id] || {}).nome || "—";
+const locCurto = l => l.tipo === "carrinha" ? l.nome.replace(/^Carrinha (\d+).*/, "C$1") : l.id === "principal" ? "Armazém" : l.nome.replace("Armazém ", "Arm. ");
+function stockQty(){
+  const q = {};
+  for(const m of S.stk.mov){
+    const n = Number(m.qtd) || 0;
+    if(m.destino){ ((q[m.destino] ||= {})[m.codigo] = (q[m.destino][m.codigo] || 0) + n); }
+    if(m.origem){ ((q[m.origem] ||= {})[m.codigo] = (q[m.origem][m.codigo] || 0) - n); }
+  }
+  return q;
+}
+const stkArtigos = () => matList().map(m => ({ ...m, ...(S.stk.art[m.codigo] || {}), codigo: m.codigo, nome: m.nome }));
+const numTxt = n => { const r = Math.round(n * 100) / 100; return String(r).replace(".", ","); };
+function viewStock(){
+  if(!VE_STOCK()) return emptyBox("Sem acesso.");
+  if(!S.stk.ok) return `<h2>Stock</h2>${emptyBox("Não foi possível carregar o stock. Confirme que o ficheiro do stock foi corrido no Supabase.")}`;
+  const Q = stockQty(); const locs = locaisList(); const arts = stkArtigos();
+  const tot = c => locs.reduce((s, l) => s + ((Q[l.id] || {})[c] || 0), 0);
+  const baixos = arts.filter(a => ((Q.principal || {})[a.codigo] || 0) < (Number(a.minimo) || 0));
+  const negs = []; for(const l of locs) for(const a of arts){ const v = (Q[l.id] || {})[a.codigo] || 0; if(v < 0) negs.push(`${a.nome} em ${l.nome} (${numTxt(v)})`); }
+  const uni = id => Object.values(Q[id] || {}).reduce((s, v) => s + v, 0);
+  const valor = arts.reduce((s, a) => s + tot(a.codigo) * (Number(a.custo) || 0), 0);
+  const carr = locs.filter(l => l.tipo === "carrinha").reduce((s, l) => s + uni(l.id), 0);
+  const shown = stkLoc ? locs.filter(l => l.id === stkLoc) : locs;
+  const movs = S.stk.mov.filter(m => !stkMovF || m.codigo === stkMovF || m.origem === stkMovF || m.destino === stkMovF).slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
+  return `<h2>Stock <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="stockExport()">⬇️ Excel</button></span></h2>
+  <div class="stats">
+    <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
+    <div class="stat"><b>${numTxt(uni("c5arm"))}</b><span>Armazém C5</span></div>
+    <div class="stat"><b>${numTxt(carr)}</b><span>Nas carrinhas</span></div>
+    <div class="stat"><b style="font-size:22px">${eur(valor)}</b><span>Valor a custo</span></div>
+  </div>
+  <div class="actions" style="margin:0 0 12px;flex-wrap:wrap">
+    <button class="btn pri" onclick="openMov('compra')">+ Compra</button>
+    <button class="btn" onclick="openMov('carga')">🚐 Carga p/ carrinha</button>
+    <button class="btn" onclick="openMov('devolucao')">↩️ Devolução</button>
+    <button class="btn" onclick="openMov('transferencia')">⇄ Transferência</button>
+    <button class="btn" onclick="openMov('ajuste')">± Ajuste</button>
+  </div>
+  ${baixos.length ? `<div class="note" style="background:var(--red-bg,#fdecea);color:var(--red,#b42318)">⚠️ <b>Repor no armazém:</b> ${baixos.map(a => `${esc(a.nome)} (${numTxt((Q.principal || {})[a.codigo] || 0)} / mín. ${numTxt(Number(a.minimo)||0)})`).join(" · ")}</div>` : ""}
+  ${negs.length ? `<div class="note">Stock negativo — falta registar uma carga ou corrigir com um ajuste: ${esc(negs.join(" · "))}</div>` : ""}
+  <div class="chips"><button class="chip ${!stkLoc?"on":""}" onclick="stkLoc='';render()">Todos os locais</button>${locs.map(l => `<button class="chip ${stkLoc===l.id?"on":""}" onclick="stkLoc='${l.id}';render()">${esc(locCurto(l))}</button>`).join("")}</div>
+  <div class="panel" style="padding:0;overflow-x:auto"><table class="stk"><thead><tr><th style="text-align:left">Artigo</th>${shown.map(l => `<th title="${esc(l.nome)}">${esc(locCurto(l))}</th>`).join("")}${stkLoc ? "" : "<th>Total</th>"}<th>Mín.</th></tr></thead><tbody>
+    ${arts.map(a => { const arm = (Q.principal || {})[a.codigo] || 0; const low = arm < (Number(a.minimo) || 0);
+      return `<tr onclick="openStockArt('${esc(a.codigo)}')" style="cursor:pointer"><td style="text-align:left">${esc(a.nome)}<div class="mono" style="font-size:11px;color:var(--muted)">${esc(a.codigo)}</div></td>${shown.map(l => { const v = (Q[l.id] || {})[a.codigo] || 0; return `<td class="mono" style="${v < 0 ? "color:#b42318;font-weight:700" : l.id === "principal" && low ? "color:#b42318;font-weight:700" : v ? "" : "color:#bbb"}">${numTxt(v)}</td>`; }).join("")}${stkLoc ? "" : `<td class="mono" style="font-weight:700">${numTxt(tot(a.codigo))}</td>`}<td class="mono" style="color:var(--muted)">${numTxt(Number(a.minimo) || 0)}</td></tr>`; }).join("")}
+  </tbody></table></div>
+  <h3>Carrinhas e técnicos</h3>
+  <div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">O material das ordens concluídas sai da carrinha do técnico atribuído. Técnicos sem carrinha descontam do armazém principal.</div>
+    ${locs.filter(l => l.tipo === "carrinha").map(l => `<div class="part" style="gap:8px"><span class="n">${esc(l.nome)} <span class="mono" style="color:var(--muted);font-size:12px">${esc(l.matricula||"")}</span></span><select onchange="setCarTec('${l.id}', this.value)" style="max-width:48%;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><option value="">— Sem técnico —</option>${pessoasAgrupadas(l.tecnico)}</select></div>`).join("")}</div>
+  <h3>Movimentos <span class="mono" style="font-weight:500">${S.stk.mov.length}</span></h3>
+  <select class="search" onchange="stkMovF=this.value;render()"><option value="">Todos os artigos e locais</option><optgroup label="Locais">${locs.map(l => `<option value="${l.id}" ${stkMovF===l.id?"selected":""}>${esc(l.nome)}</option>`).join("")}</optgroup><optgroup label="Artigos">${arts.map(a => `<option value="${esc(a.codigo)}" ${stkMovF===a.codigo?"selected":""}>${esc(a.nome)}</option>`).join("")}</optgroup></select>
+  <div class="list">${movs.map(movItem).join("") || emptyBox("Sem movimentos.")}</div>
+  ${movs.length === 60 ? '<p style="font-size:13px;color:var(--muted)">A mostrar os 60 mais recentes. Use o filtro ou exporte para ver todos.</p>' : ""}`;
+}
+function movItem(m){
+  const o = m.ordemId ? S.ots[m.ordemId] : null;
+  const de = m.origem ? locNome(m.origem) : "", para = m.destino ? locNome(m.destino) : "";
+  const sinal = m.tipo === "ajuste" ? (m.destino ? "+" : "−") : "";
+  const obra = m.condoId ? cName(m.condoId) : "";
+  return `<div class="item"><div class="bar ${m.tipo==="compra"?"green":m.tipo==="servico"?"amber":"blue"}"></div><div class="main">
+    <div class="t">${sinal}${numTxt(Number(m.qtd))} × ${esc((S.mat[m.codigo] || {}).nome || m.codigo)}</div>
+    <div class="s">${esc(TIPOS_MOV[m.tipo] || m.tipo)} · ${fmtDate(m.data)}${de || para ? " · " + esc([de, para].filter(Boolean).join(" → ")) : ""}</div>
+    ${o || obra ? `<div class="s">${o ? `<a href="#" onclick="event.preventDefault();openOt('${o.id}')" style="color:var(--blue)">Ordem ${esc(numOt(o))}</a> · ` : ""}${esc(obra)}${m.criadoPor ? " · " + esc(nm(m.criadoPor)) : ""}</div>` : ""}
+    ${m.fornecedor || m.documento || m.preco ? `<div class="s">${esc([m.fornecedor, m.documento, m.preco ? eur(Number(m.preco)) + "/un" : ""].filter(Boolean).join(" · "))}</div>` : ""}
+    ${m.obs ? `<div class="s">${esc(m.obs)}</div>` : ""}</div>
+    ${m.tipo !== "servico" ? `<button class="btn sm" data-label="✕" onclick="event.stopPropagation();armDelete(this,()=>delMov(${m.id}))" aria-label="Apagar">✕</button>` : ""}</div>`;
+}
+async function delMov(id){ const { error } = await sb.from("stock_mov").delete().eq("id", id); if(error) return writeErr(error); S.stk.mov = S.stk.mov.filter(m => m.id !== id); render(); toast("Movimento apagado."); }
+async function setCarTec(loc, tec){
+  const { error } = await sb.from("stock_locais").update({ tecnico: tec || null }).eq("id", loc); if(error) return writeErr(error);
+  S.stk.locais[loc] = { ...S.stk.locais[loc], tecnico: tec }; toast(tec ? locNome(loc) + " → " + nm(tec) : "Carrinha sem técnico.");
+}
+/* ---------- formulário de movimento ---------- */
+let movLines = [];
+function openMov(tipo, codigo){
+  const locs = locaisList(); const arm = locs.filter(l => l.tipo === "armazem"), car = locs.filter(l => l.tipo === "carrinha");
+  const opts = (list, sel) => list.map(l => `<option value="${l.id}" ${l.id===sel?"selected":""}>${esc(l.nome)}</option>`).join("");
+  movLines = [];
+  let campos = "";
+  if(tipo === "compra") campos = `<label class="f"><span>Entra em</span><select id="mv_dest">${opts(arm, "principal")}</select></label>
+    <div class="grid2"><label class="f"><span>Fornecedor</span><input id="mv_forn" list="dl_forn" placeholder="Opcional"><datalist id="dl_forn">${[...new Set(S.stk.mov.map(m => m.fornecedor).filter(Boolean))].map(f => `<option value="${esc(f)}">`).join("")}</datalist></label>
+    <label class="f"><span>Documento / fatura</span><input id="mv_doc" placeholder="Opcional"></label></div>`;
+  if(tipo === "carga") campos = `<div class="grid2"><label class="f"><span>Sai de</span><select id="mv_orig">${opts(arm, "principal")}</select></label><label class="f"><span>Para a carrinha</span><select id="mv_dest">${opts(car)}</select></label></div>`;
+  if(tipo === "devolucao") campos = `<div class="grid2"><label class="f"><span>Da carrinha</span><select id="mv_orig">${opts(car)}</select></label><label class="f"><span>Volta para</span><select id="mv_dest">${opts(arm, "principal")}</select></label></div>`;
+  if(tipo === "transferencia") campos = `<div class="grid2"><label class="f"><span>De</span><select id="mv_orig">${opts(locs, "principal")}</select></label><label class="f"><span>Para</span><select id="mv_dest">${opts(locs, "c5arm")}</select></label></div>`;
+  if(tipo === "ajuste") campos = `<div class="grid2"><label class="f"><span>Local</span><select id="mv_loc">${opts(locs, "principal")}</select></label><label class="f"><span>Ajuste</span><select id="mv_sinal"><option value="+">+ Acrescentar</option><option value="-">− Retirar</option></select></label></div>`;
+  openSheet({compra:"Compra / entrada", carga:"Carga para carrinha", devolucao:"Devolução ao armazém", transferencia:"Transferência", ajuste:"Ajuste de stock"}[tipo], `
+    ${campos}
+    <label class="f"><span>Data</span><input type="date" id="mv_data" value="${today()}"></label>
+    <div class="panel"><b>Artigos</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
+      <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}" ${a.codigo===codigo?"selected":""}>${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
+      <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('${tipo}')">${tipo === "compra" ? `<input id="mv_preco" inputmode="decimal" placeholder="€/un" style="width:80px">` : ""}<button class="btn sm" onclick="addMovLine('${tipo}')">Adicionar</button></div></div>
+    <label class="f"><span>Observações</span><input id="mv_obs" placeholder="${tipo === "ajuste" ? "Motivo (ex.: contagem, partido)" : "Opcional"}"></label>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveMov('${tipo}')">Guardar</button></div>`);
+  drawMovLines();
+}
+function drawMovLines(){ const el = $("#mv_lines"); if(!el) return; el.innerHTML = movLines.map((x, i) => `<div class="part"><span class="n">${esc((S.mat[x.c] || {}).nome || x.c)}</span><span class="mono">× ${numTxt(x.q)}${x.p != null ? " · " + eur(x.p) + "/un" : ""}</span><button class="btn sm" onclick="movLines.splice(${i},1);drawMovLines()">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Escolha o artigo, a quantidade e carregue em Adicionar.</span>'; }
+function addMovLine(tipo){
+  const c = val("mv_art"), q = parseFloat(String(val("mv_qtd")).replace(",", "."));
+  if(!c || !(q > 0)){ toast("Indique a quantidade."); return; }
+  let p = null; if(tipo === "compra" && val("mv_preco")){ p = parsePrice(val("mv_preco")); if(p === null){ toast("Preço inválido."); return; } }
+  movLines.push({ c, q, p }); $("#mv_qtd").value = ""; if($("#mv_preco")) $("#mv_preco").value = ""; drawMovLines(); $("#mv_qtd").focus();
+}
+async function saveMov(tipo){
+  if(val("mv_qtd")) addMovLine(tipo);
+  if(!movLines.length){ toast("Acrescente pelo menos um artigo."); return; }
+  let origem = null, destino = null;
+  if(tipo === "compra") destino = val("mv_dest");
+  else if(tipo === "ajuste"){ if(val("mv_sinal") === "+") destino = val("mv_loc"); else origem = val("mv_loc"); }
+  else { origem = val("mv_orig"); destino = val("mv_dest"); }
+  if(origem && origem === destino){ toast("Origem e destino têm de ser diferentes."); return; }
+  if(tipo === "ajuste" && !val("mv_obs")){ toast("Indique o motivo do ajuste."); return; }
+  const base = { tipo, data: val("mv_data") || today(), origem, destino, fornecedor: val("mv_forn"), documento: val("mv_doc"), obs: val("mv_obs") };
+  const rows = movLines.map(x => ({ ...base, codigo: x.c, qtd: x.q, preco: x.p }));
+  const { data, error } = await sb.from("stock_mov").insert(rows).select(); if(error) return writeErr(error);
+  S.stk.mov.push(...(data || []).map(fromRow));
+  if(origem){ const Q = stockQty(); const neg = movLines.filter(x => ((Q[origem] || {})[x.c] || 0) < 0); if(neg.length) toast("Atenção: " + locNome(origem) + " ficou com stock negativo em " + neg.map(x => (S.mat[x.c] || {}).nome).join(", ")); else toast("Guardado."); } else toast("Guardado.");
+  closeSheet(); render();
+}
+/* ---------- ficha do artigo ---------- */
+function openStockArt(c){
+  const a = stkArtigos().find(x => x.codigo === c); if(!a) return;
+  const Q = stockQty(); const locs = locaisList();
+  const usado = S.stk.mov.filter(m => m.codigo === c && m.tipo === "servico");
+  const porPredio = {}; for(const m of usado){ porPredio[m.condoId] = (porPredio[m.condoId] || 0) + Number(m.qtd); }
+  openSheet(esc(a.nome), `
+    <div class="panel"><div class="parts">${locs.map(l => `<div class="part"><span class="n">${esc(l.nome)}</span><span class="mono">${numTxt((Q[l.id] || {})[c] || 0)}</span></div>`).join("")}
+      <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${numTxt(locs.reduce((s, l) => s + ((Q[l.id] || {})[c] || 0), 0))}</span></div></div></div>
+    <div class="grid2"><label class="f"><span>Stock mínimo no armazém</span><input id="sa_min" inputmode="decimal" value="${numTxt(Number(a.minimo) || 0)}"></label>
+    <label class="f"><span>Custo médio (€)</span><input id="sa_custo" inputmode="decimal" value="${a.custo !== "" && a.custo != null ? String(Math.round(Number(a.custo) * 100) / 100).replace(".", ",") : ""}"></label></div>
+    <div class="actions"><button class="btn" onclick="closeSheet();openMov('compra','${esc(c)}')">+ Compra</button><button class="btn" onclick="closeSheet();openMov('carga','${esc(c)}')">🚐 Carga</button><span class="sp"></span><button class="btn pri" onclick="saveStockArt('${esc(c)}')">Guardar</button></div>
+    ${Object.keys(porPredio).length ? `<h3>Aplicado por prédio (pela app)</h3><div class="panel"><div class="parts">${Object.entries(porPredio).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="part"><span class="n">${esc(cName(k))}</span><span class="mono">${numTxt(v)}</span></div>`).join("")}</div></div>` : ""}`);
+}
+async function saveStockArt(c){
+  const minimo = parsePrice(val("sa_min")); const custo = val("sa_custo") ? parsePrice(val("sa_custo")) : null;
+  if(minimo === null){ toast("Mínimo inválido."); return; }
+  const { error } = await sb.from("stock_artigos").upsert({ codigo: c, minimo, custo }); if(error) return writeErr(error);
+  S.stk.art[c] = { ...(S.stk.art[c] || {}), codigo: c, minimo, custo }; closeSheet(); render(); toast("Guardado.");
+}
+/* ---------- exportar ---------- */
+function stockExport(){
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`; const n = v => String(Math.round((Number(v) || 0) * 100) / 100).replace(".", ",");
+  const Q = stockQty(); const locs = locaisList(); const arts = stkArtigos();
+  const head = ["Código", "Descrição", ...locs.map(l => l.nome), "Total", "Stock mínimo", "Estado", "Custo médio (€)", "Valor a custo (€)"];
+  const rows = arts.map(a => { const t = locs.reduce((s, l) => s + ((Q[l.id] || {})[a.codigo] || 0), 0); const arm = (Q.principal || {})[a.codigo] || 0;
+    return [a.codigo, a.nome, ...locs.map(l => n((Q[l.id] || {})[a.codigo] || 0)), n(t), n(a.minimo), arm < (Number(a.minimo) || 0) ? "REPOR" : "OK", a.custo !== "" && a.custo != null ? n(a.custo) : "", a.custo !== "" && a.custo != null ? n(t * Number(a.custo)) : ""].map(cell).join(";"); });
+  const mh = ["Data", "Tipo", "Código", "Descrição", "Quantidade", "De", "Para", "Ordem", "Edifício", "Fornecedor", "Documento", "Preço unit. (€)", "Observações", "Registado por"];
+  const mr = S.stk.mov.slice().sort((a,b) => (a.data||"").localeCompare(b.data||"") || a.id - b.id).map(m => [fmtDate(m.data), TIPOS_MOV[m.tipo] || m.tipo, m.codigo, (S.mat[m.codigo] || {}).nome || "", n(m.qtd), m.origem ? locNome(m.origem) : "", m.destino ? locNome(m.destino) : "", m.ordemId && S.ots[m.ordemId] ? numOt(S.ots[m.ordemId]) : "", m.condoId ? cName(m.condoId) : "", m.fornecedor, m.documento, m.preco ? n(m.preco) : "", m.obs, m.criadoPor ? nm(m.criadoPor) : ""].map(cell).join(";"));
+  download(`stock-${today()}.csv`, "﻿" + ["STOCK A " + fmtDate(today()), head.map(cell).join(";"), ...rows, "", "MOVIMENTOS", mh.map(cell).join(";"), ...mr].join("\r\n"), "text/csv;charset=utf-8");
+}
+
 /* ---------- expor funções usadas no HTML ---------- */
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });

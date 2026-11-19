@@ -51,6 +51,9 @@ nav .in{display:flex;width:100%;max-width:860px}
 nav button{flex:1;border:0;background:none;padding:10px 4px 12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
 nav button svg{width:22px;height:22px}
 nav button.on{color:var(--ink)}
+@media(max-width:440px){.who-n{display:none}}
+nav button{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav .in.many button{font-size:10.5px;padding-left:1px;padding-right:1px;letter-spacing:-.1px}
 nav button.on svg{color:var(--accent)}
 h2{font-size:20px;margin:4px 0 12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 h3{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:22px 0 8px;font-weight:600}
@@ -60,6 +63,14 @@ h3{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted
 .stat b{display:block;font:600 28px/1.1 "IBM Plex Mono",monospace}
 .stat span{font-size:13px;color:var(--muted)}
 .stat.warn b{color:var(--red)}
+table.stk{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+table.stk th,table.stk td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+table.stk th{font-size:12px;color:var(--muted);font-weight:600;background:#faf8f4;position:sticky;top:0}
+table.stk td:first-child,table.stk th:first-child{position:sticky;left:0;background:var(--card);white-space:normal;min-width:150px}
+table.stk th:first-child{background:#faf8f4}
+table.stk tr:hover td{background:#fbf8f2}
+.stats + .actions{margin-top:12px}
+
 .list{display:flex;flex-direction:column;gap:8px}
 .item{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;cursor:pointer;display:flex;gap:12px;align-items:flex-start}
 .item:hover{border-color:#cfc9bd}
@@ -175,7 +186,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=24"></script>
-<script type="module" src="app.js?v=24"></script>
+<script src="config.js?v=25"></script>
+<script type="module" src="app.js?v=25"></script>
 </body>
 </html>
