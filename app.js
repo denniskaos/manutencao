@@ -92,7 +92,7 @@ function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.f
 // iPhone: impedir zoom com dois dedos e com duplo toque (a app fica do tamanho do ecrã).
 for(const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 let lastTouchEnd = 0;
-document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
+if(isIOS) document.addEventListener("touchend", e => { const n = Date.now(); if(n - lastTouchEnd < 300 && !e.target.closest("input,textarea,select,canvas")) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
 async function start(){
   if(!configured){ mode = "config"; render(); return; }
   if("serviceWorker" in navigator){
@@ -254,6 +254,11 @@ function showInstallHelp(){
   <ol style="line-height:1.7;padding-left:20px"><li>Abra esta página no <b>Safari</b>.</li><li>Toque no botão <b>Partilhar</b> (quadrado com seta para cima).</li><li>Escolha <b>Adicionar ao ecrã principal</b> e confirme.</li><li>Abra a aplicação pelo novo ícone <b>Manutenção</b>, entre, e toque em <b>Ativar notificações</b>.</li></ol>
   <p style="font-size:13px;color:var(--muted)">Requer iOS 16.4 ou mais recente.</p>`);
 }
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if(mode === "ok") render(); });
+window.addEventListener("appinstalled", () => { installEvt = null; toast("Aplicação instalada."); });
+async function instalarApp(){ if(!installEvt){ openSheet("Instalar no Android", `<ol style="line-height:1.7;padding-left:20px;margin-top:0"><li>Abra esta página no <b>Chrome</b>.</li><li>Toque nos <b>três pontos</b> (⋮) em cima à direita.</li><li>Escolha <b>Instalar aplicação</b> (ou <b>Adicionar ao ecrã principal</b>).</li></ol><p>Depois abra a <b>Manutenção</b> pelo ícone no ecrã principal.</p>`); return; } installEvt.prompt(); try{ await installEvt.userChoice; }catch(e){} installEvt = null; render(); }
+const installBanner = () => (!isIOS && !isStandalone && installEvt) ? `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Instale a aplicação no telemóvel para a abrir como as outras e receber notificações.</span><button class="btn sm pri" onclick="instalarApp()">📲 Instalar</button></div>` : "";
 const pushBanner = () => {
   if(pushOn !== false) return "";
   if(typeof Notification !== "undefined" && Notification.permission === "denied") return `<div class="note">As notificações estão bloqueadas neste telemóvel. Ative-as nas definições do telemóvel (Notificações → Manutenção / navegador).</div>`;
@@ -361,7 +366,11 @@ const ICONS = {
 const tabsFor = () => IS_ADMIN
   ? [["inicio","Início"],["ordens","Ordens"],["prev","Preventiva"],["condos","Condomínios"],...(VE_STOCK() ? [["stock","Stock"]] : []),["equipa","Equipa"]]
   : [["inicio","Hoje"],["ordens","As minhas"],["condos","Condomínios"]];
-function go(t){ tab = t; q = ""; listMax = 50; render(); window.scrollTo(0,0); }
+function go(t){
+  if(t !== "inicio" && !tabHist){ try{ history.pushState({ tab: 1 }, ""); tabHist = true; }catch(e){} }
+  else if(t === "inicio" && tabHist){ tabHist = false; histBack(); }
+  tab = t; q = ""; listMax = 50; render(); window.scrollTo(0,0);
+}
 function renderNav(){
   if(mode !== "ok"){ $("#nav").innerHTML = ""; return; }
   $("#nav").classList.toggle("many", tabsFor().length > 5);
@@ -489,7 +498,7 @@ function viewInicio(){
     const prox = mine.filter(o => o.estado !== "concluida" && o.data && o.data > t);
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     const first = ((S.equipa[ME]||{}).nome||"").split(" ")[0];
-    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
+    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${installBanner()}${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
     <div class="stats">
       ${statCard(hoje.length, "Para hoje / em atraso", "otFilter='ativas';go('ordens')", true)}
       ${statCard(mine.filter(o=>o.estado==="curso").length, "Em curso", "otFilter='curso';go('ordens')")}
@@ -509,7 +518,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${pushBanner()}${copiaBanner()}
+  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -697,11 +706,21 @@ function renderListOnly(){
 
 /* ---------- folha (modal) ---------- */
 let sheetRefresh = null;
+let sheetHist = false, tabHist = false, ignorePop = 0, pendingBack = null;
+function histBack(){ ignorePop++; history.back(); }
+window.addEventListener("popstate", () => {
+  if(ignorePop > 0){ ignorePop--; return; }
+  if($("#scrim").classList.contains("open")){ sheetHist = false; hideSheet(); return; }
+  if(tabHist && tab !== "inicio"){ tabHist = false; tab = "inicio"; q = ""; listMax = 50; render(); window.scrollTo(0, 0); }
+});
 function openSheet(title, html, refresh){
+  if(pendingBack){ clearTimeout(pendingBack); pendingBack = null; }
+  else if(!$("#scrim").classList.contains("open") && !sheetHist){ try{ history.pushState({ sheet: 1 }, ""); sheetHist = true; }catch(e){} }
   $("#sheet").innerHTML = `<div class="top"><h4>${title}</h4><button class="x" onclick="closeSheet()" aria-label="Fechar">×</button></div><div class="body">${html}</div>`;
   $("#scrim").classList.add("open"); $("#sheet").scrollTop = 0; sheetRefresh = refresh || null;
 }
-function closeSheet(){ $("#scrim").classList.remove("open"); sheetRefresh = null; }
+function hideSheet(){ $("#scrim").classList.remove("open"); sheetRefresh = null; }
+function closeSheet(){ hideSheet(); if(sheetHist && !pendingBack) pendingBack = setTimeout(() => { pendingBack = null; if(sheetHist && !$("#scrim").classList.contains("open")){ sheetHist = false; histBack(); } }, 0); }
 $("#scrim").addEventListener("click", e => { if(e.target.id === "scrim") closeSheet(); });
 document.addEventListener("keydown", e => { if(e.key === "Escape") closeSheet(); });
 function armDelete(btn, fn){
@@ -825,7 +844,7 @@ async function createUser(){
   }catch(e){ btn.disabled = false; btn.textContent = "Criar conta"; toast(e.message); }
 }
 function showCredentials(nome, email, password, telefone){
-  const txt = `Olá ${nome.split(" ")[0]}! Já tens acesso à aplicação de Manutenção.\n\nEndereço: ${APP_URL}\nE-mail: ${email}\nPalavra-passe: ${password}\n\nNo telemóvel: abre o endereço, adiciona ao ecrã principal e ativa as notificações.`;
+  const txt = `Olá ${nome.split(" ")[0]}! Já tens acesso à aplicação de Manutenção.\n\nEndereço: ${APP_URL}\nE-mail: ${email}\nPalavra-passe: ${password}\n\nAndroid: abre o endereço no Chrome, toca em ⋮ (três pontos) → "Instalar aplicação", entra com o e-mail e a palavra-passe e carrega em "Ativar notificações". Autoriza também a localização (para o tempo).\niPhone: abre no Safari → Partilhar → "Adicionar ao ecrã principal", abre pelo ícone e ativa as notificações.\n\nDepois de entrares, muda a palavra-passe e guarda a tua assinatura no 👤.`;
   openSheet("Conta criada", `<p style="margin-top:0">Envie estes dados a ${esc(nome)}:</p><div class="cred">${esc(txt)}</div>
     <div class="actions" style="margin-top:12px">${telefone ? waBtn(telefone, txt, "Enviar por WhatsApp") : ""}<button class="btn" onclick="copyText(${esc(JSON.stringify(txt))})">Copiar</button><span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button></div>`);
 }
@@ -1897,7 +1916,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, openTrabalho, addTwLine, drawTwLines, saveTrabalho, openSaidaDireta, saveSaidaDireta, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, setExt, saveClose, instalarApp, openTrabalho, addTwLine, drawTwLines, saveTrabalho, openSaidaDireta, saveSaidaDireta, openMeteo, loadMeteo, backupCompleto, prevToggle, genPlans, grpToggle, assignMany, setExtra, setTarTec, openMov, addMovLine, saveMov, drawMovLines, delMov, setCarTec, openStockArt, saveStockArt, stockExport, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
