@@ -57,9 +57,10 @@ async function put(col, obj, quiet){
   const table = TABLES[col]; const key = col + "/" + obj.id;
   const row = toRow(table, obj);
   chains[key] = (chains[key] || Promise.resolve()).then(async () => {
-    const { error } = await sb.from(table).upsert(row);
+    const q = sb.from(table).upsert(row);
+    const { data, error } = col === "ots" ? await q.select("numero").maybeSingle() : await q;
     if(error){ writeErr(error); await reloadRow(col, obj.id); }
-    else if(col === "ots") flushPush();
+    else if(col === "ots"){ if(data && data.numero && S.ots[obj.id] && S.ots[obj.id].numero !== data.numero){ S.ots[obj.id] = { ...S.ots[obj.id], numero: data.numero }; render(); } flushPush(); }
   });
   return chains[key];
 }
@@ -162,7 +163,7 @@ function subscribeRealtime(){
   });
   ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${ME}` }, p => {
     const n = fromRow(p.new); S.notifs.unshift(n);
-    if(sheetRefresh && document.visibilityState === "visible" && $("#sheet .top h4") && S.ots[n.ordemId] && $("#sheet .top h4").textContent === S.ots[n.ordemId].titulo) setTimeout(() => readNotifsForOrder(n.ordemId), 500);
+    if(sheetRefresh && document.visibilityState === "visible" && $("#sheet .top h4") && S.ots[n.ordemId] && $("#sheet .top h4").textContent.endsWith(S.ots[n.ordemId].titulo)) setTimeout(() => readNotifsForOrder(n.ordemId), 500);
     toast("🔔 " + n.titulo + ": " + n.corpo);
     try{ navigator.vibrate && navigator.vibrate([150,80,150]); }catch(e){}
     render();
@@ -303,6 +304,8 @@ function valores(o){
   return { mat, mo, nd, desl, so, total: r2(mat + mo + desl) };
 }
 const fmtTempo = t => `${Math.floor((t||0)/60)} h ${pad((t||0)%60)} min`;
+const numOt = o => o && o.numero ? String(o.numero).padStart(4, "0") : "";
+const numLabel = o => numOt(o) ? "Nº " + numOt(o) : "Nova";
 const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
 
 /* ---------- WhatsApp ---------- */
@@ -311,9 +314,9 @@ function waNum(t){ let d = String(t||"").replace(/\D/g, ""); if(d.startsWith("00
 const waLink = (tel, text) => `https://wa.me/${waNum(tel)}?text=${encodeURIComponent(text)}`;
 function waOrdem(o){
   const c = S.condos[condoOf(o)] || {};
-  return [`🔧 Nova ordem de trabalho`, `*${o.titulo}*`, c.nome ? cLabel(c) : "", c.morada || "", whereTxt(o), `Prioridade: ${(PRIOR[o.prioridade]||PRIOR.media)[0]} · Prevista: ${fmtDate(o.data)}`, o.descricao ? "\n" + o.descricao : "", `\nAbrir: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n");
+  return [`🔧 Nova ordem de trabalho ${numLabel(o)}`, `*${o.titulo}*`, c.nome ? cLabel(c) : "", c.morada || "", whereTxt(o), `Prioridade: ${(PRIOR[o.prioridade]||PRIOR.media)[0]} · Prevista: ${fmtDate(o.data)}`, o.descricao ? "\n" + o.descricao : "", `\nAbrir: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n");
 }
-function waConcl(o){ return [`✅ Ordem concluída`, `*${o.titulo}*`, cName(condoOf(o)), o.notas ? "\n" + o.notas : "", `\nVer: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n"); }
+function waConcl(o){ return [`✅ Ordem ${numLabel(o)} concluída`, `*${o.titulo}*`, cName(condoOf(o)), o.notas ? "\n" + o.notas : "", `\nVer: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n"); }
 const waBtn = (tel, text, label) => `<a class="btn wa" href="${esc(waLink(tel, text))}" target="_blank" rel="noopener">📲 ${esc(label)}</a>`;
 
 /* ---------- navegação ---------- */
@@ -353,7 +356,7 @@ function otItem(o, hideCondo){
   const who = IS_ADMIN ? `<div class="s">👷 <span class="${o.tecnico?"":"warnTxt"}">${esc(nm(o.tecnico))}</span></div>` : "";
   const nf = (o.fotos||[]).length;
   return `<div class="item" onclick="openOt('${o.id}')"><div class="bar ${o.estado==="concluida"?"green":p[2]}"></div>
-    <div class="main"><div class="t">${esc(o.titulo)}</div><div class="s">${esc(sub)}</div>${who}
+    <div class="main"><div class="t">${numOt(o)?`<span class="mono" style="color:var(--muted);font-weight:500;margin-right:6px">${numOt(o)}</span>`:""}${esc(o.titulo)}</div><div class="s">${esc(sub)}</div>${who}
     ${ck.length||nf?`<div class="s mono">${ck.length?`${done}/${ck.length} verificações`:""}${ck.length&&nf?" · ":""}${nf?`📷 ${nf}`:""}</div>`:""}</div>
     <div class="r">${est}<span class="${late?"badge b-red":""}">${o.estado==="concluida"?fmtDate(o.concluida):fmtDate(o.data)}</span>${o.tipo==="preventiva"?'<span class="badge">Preventiva</span>':o.tipo==="pedido"?'<span class="badge">Pedido</span>':""}</div></div>`;
 }
@@ -430,13 +433,13 @@ function viewInicio(){
 function viewOrdens(){
   const f = {ativas:o=>o.estado!=="concluida", aberta:o=>o.estado==="aberta", curso:o=>o.estado==="curso", concluida:o=>o.estado==="concluida", todas:()=>true}[otFilter] || (()=>true);
   const tf = !IS_ADMIN || !techF ? () => true : techF === "-" ? o => !o.tecnico : o => o.tecnico === techF;
-  const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
+  const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
   return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></h2>
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
-  <input class="search" placeholder="Procurar por título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
+  <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
   <div class="list" id="lst">${list.length ? list.map(o=>otItem(o, !!condoF)).join("") : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
 }
 
@@ -671,9 +674,9 @@ function exportJSON(){
   download(`manutencao-${today()}.json`, JSON.stringify(data, null, 1), "application/json");
 }
 function exportCSV(){
-  const head = ["Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Materiais (€)","Mão de obra (€)","Deslocações","Deslocação (€)","Total (€)","Notas"];
+  const head = ["Nº","Título","Código","Condomínio","Morada","Equipamento","Zona","Técnico","Tipo","Prioridade","Estado","Prevista","Concluída","Pedido por","Descrição","Peças","Tempo (min)","Materiais (€)","Mão de obra (€)","Deslocações","Deslocação (€)","Total (€)","Notas"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, ...(v => [v.mat, v.mo, v.nd, v.desl, v.total].map((x, k) => k === 2 ? x : x.toFixed(2).replace(".", ",")))(valores(o)), o.notas].map(cell).join(";"); });
+  const rows = sortOts(Object.values(S.ots)).map(o => { const c = S.condos[condoOf(o)] || {}; return [numOt(o), o.titulo, c.codigo, c.nome, c.morada, eqName(o.equipId), o.zona, nm(o.tecnico), TIPOS_OT[o.tipo]||o.tipo, (PRIOR[o.prioridade]||PRIOR.media)[0], ESTADOS[o.estado], fmtDate(o.data), o.concluida?fmtDate(o.concluida):"", o.solicitante, o.descricao, (o.pecas||[]).map(p => partLabel(p) + " x" + p.q).join("; "), o.tempo, ...(v => [v.mat, v.mo, v.nd, v.desl, v.total].map((x, k) => k === 2 ? x : x.toFixed(2).replace(".", ",")))(valores(o)), o.notas].map(cell).join(";"); });
   download(`ordens-${today()}.csv`, "﻿" + [head.map(cell).join(";"), ...rows].join("\r\n"), "text/csv;charset=utf-8");
 }
 
@@ -1050,7 +1053,7 @@ function openOt(id){
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${IS_ADMIN||locked?`<button class="btn" onclick="printOt('${id}')">🖨️ Imprimir</button>`:""}<span class="sp"></span>
       ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">Concluir ordem</button>`}</div>`;
   };
-  openSheet(esc(S.ots[id].titulo), draw(), () => {
+  openSheet((numOt(S.ots[id]) ? `<span class="mono" style="color:var(--muted);font-weight:500">${numOt(S.ots[id])}</span> ` : "") + esc(S.ots[id].titulo), draw(), () => {
     const b = $("#sheet .body"); if(!b) return; if(!S.ots[id]){ closeSheet(); return; }
     const a = document.activeElement;
     if(a && b.contains(a) && a.tagName === "SELECT") return;
@@ -1072,7 +1075,7 @@ function reportText(id){
   L.push("Condomínio: " + (c.nome ? cLabel(c) : "—"));
   if(c.morada) L.push("Morada: " + c.morada);
   if(c.nif) L.push("NIF: " + c.nif);
-  L.push("", "Ordem: " + o.titulo, "Estado: " + ESTADOS[o.estado], "Tipo: " + (TIPOS_OT[o.tipo]||o.tipo) + "   Prioridade: " + (PRIOR[o.prioridade]||PRIOR.media)[0]);
+  L.push("", "Ordem " + numLabel(o) + ": " + o.titulo, "Estado: " + ESTADOS[o.estado], "Tipo: " + (TIPOS_OT[o.tipo]||o.tipo) + "   Prioridade: " + (PRIOR[o.prioridade]||PRIOR.media)[0]);
   if(o.solicitante) L.push("Pedido por: " + o.solicitante);
   if(o.tecnico) L.push("Técnico: " + nm(o.tecnico));
   L.push("Data prevista: " + fmtDate(o.data) + (o.concluida ? "   Concluída: " + fmtDate(o.concluida) : ""));
@@ -1106,7 +1109,7 @@ async function printOt(id){
   const tempo = o.tempo ? `${Math.floor(o.tempo/60)} h ${o.tempo%60} min` : "";
   const html = `<div class="pr">
     <div class="hd"><div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div>
-      <div class="meta">Ordem nº <b>${esc(o.id.toUpperCase())}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
+      <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}${row("Administração", c.admin)}</table>
     <h2>Intervenção</h2>
