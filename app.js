@@ -38,12 +38,12 @@ const COLS = {
   condominios: ["id","codigo","nome","morada","nif","fracoes","admin","contacto","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial"],
 };
 const NULLABLE = new Set(["equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
 const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o)) continue; let v = o[k]; if(NULLABLE.has(k) && (v === "" || v === undefined)) v = null; if(k === "periodo" || k === "tempo") v = Number(v) || 0; if(k === "deslocacoes") v = (v === "" || v === undefined) ? 1 : (Number(v) || 0); r[snake(k)] = v; } return r; }
+function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o)) continue; let v = o[k]; if(NULLABLE.has(k) && (v === "" || v === undefined)) v = null; if(k === "periodo" || k === "tempo") v = Number(v) || 0; if(k === "deslocacoes") v = (v === "" || v === undefined) ? 1 : (Number(v) || 0); if(k === "soMaterial") v = v === true; r[snake(k)] = v; } return r; }
 function fromRow(r){ const o = {}; for(const k in r){ const v = r[k]; o[camel(k)] = v === null ? "" : v; } return o; }
 
 /* ---------- estado ---------- */
@@ -284,9 +284,10 @@ const r2 = v => Math.round(v * 100) / 100;
 function valores(o){
   const mat = r2(partsTotal(o.pecas || []));
   const horas = (Number(o.tempo) || 0) / 60;
-  const mo = r2(horas * S.tarifas.hora);
-  const nd = nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
-  return { mat, mo, nd, desl, total: r2(mat + mo + desl) };
+  const so = o.soMaterial === true;
+  const mo = so ? 0 : r2(horas * S.tarifas.hora);
+  const nd = so ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
+  return { mat, mo, nd, desl, so, total: r2(mat + mo + desl) };
 }
 const fmtTempo = t => `${Math.floor((t||0)/60)} h ${pad((t||0)%60)} min`;
 const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
@@ -639,6 +640,7 @@ async function setTarifa(k, v){
   if(error) return writeErr(error);
   S.tarifas = { deslocacao: row.deslocacao, hora: row.hora }; toast("Tarifa guardada: " + eur(n));
 }
+function setSoMaterial(id, on){ updOt(id, { soMaterial: !!on }); toast(on ? "Marcada como só entrega de material." : "Desmarcada."); }
 function setDesloc(id, v){ const n = Math.max(0, parseInt(v) || 0); updOt(id, { deslocacoes: n }); }
 function setPartPrice(id, i, v){
   const o = S.ots[id]; if(!o) return; const p = parsePrice(v);
@@ -976,14 +978,15 @@ function openOt(id){
         <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
         ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material do armazém —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
+      <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
       <div class="panel"><b>Tempo gasto</b>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="t_h" type="number" min="0" value="${Math.floor((o.tempo||0)/60)}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> h
         <input id="t_m" type="number" min="0" max="59" value="${(o.tempo||0)%60}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> min</div></div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
-          <div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h</span></span><span class="mono">${eur(v.mo)}</span></div>
-          <div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>
+          ${v.so ? `<div class="part"><span class="n" style="color:var(--muted)">Só entrega de material — sem deslocação nem mão de obra</span></div>` : `<div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h</span></span><span class="mono">${eur(v.mo)}</span></div>
+          <div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>`}
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}
       <label class="f"><span>Notas do técnico</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="O que foi encontrado, o que foi feito, o que fica por fazer…">${esc(o.notas)}</textarea></label>
@@ -1021,8 +1024,9 @@ function reportText(id){
   if(o.descricao) L.push("", "DESCRIÇÃO", o.descricao);
   if((o.checklist||[]).length){ L.push("", "VERIFICAÇÕES"); o.checklist.forEach(x => L.push((x.ok ? "[x] " : "[ ] ") + x.t)); }
   if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q + (IS_ADMIN && lineTotal(x) !== null ? "  " + eur(unitPrice(x)) + "/un = " + eur(lineTotal(x)) : ""))); if(IS_ADMIN) L.push("Total materiais: " + eur(partsTotal(o.pecas))); }
+  if(o.soMaterial === true) L.push("", "Só entrega de material.");
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
-  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat), "Mão de obra (" + fmtTempo(o.tempo) + " × " + eur(S.tarifas.hora) + "/h): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), "TOTAL: " + eur(v.total)); }
+  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + fmtTempo(o.tempo) + " × " + eur(S.tarifas.hora) + "/h): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
   return L.join("\n");
@@ -1052,7 +1056,7 @@ async function printOt(id){
     <h2>Intervenção</h2>
     <table class="prkv">${row("Tipo", TIPOS_OT[o.tipo]||o.tipo)}${row("Prioridade", (PRIOR[o.prioridade]||PRIOR.media)[0])}${row("Pedido por", o.solicitante)}
       ${row("Equipamento", e ? e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "") : "")}${row("Zona / fração", o.zona)}
-      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}</table>
+      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}${o.soMaterial===true?row("Observação", "Só entrega de material"):""}</table>
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
     ${pc.length ? (IS_ADMIN
@@ -1060,8 +1064,8 @@ async function printOt(id){
       : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
     ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
       <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
-      <tr><td>Mão de obra — ${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/hora</td><td style="text-align:right">${eur(v.mo)}</td></tr>
-      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>
+      ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/hora</td><td style="text-align:right">${eur(v.mo)}</td></tr>
+      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>`}
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
@@ -1083,7 +1087,7 @@ Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDe
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
