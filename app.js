@@ -86,7 +86,16 @@ function flushPush(){ clearTimeout(pushTimer); pushTimer = setTimeout(() => sb.f
 /* ---------- arranque e sessão ---------- */
 async function start(){
   if(!configured){ mode = "config"; render(); return; }
-  if("serviceWorker" in navigator){ try{ await navigator.serviceWorker.register("sw.js"); }catch(e){ console.warn(e); } }
+  if("serviceWorker" in navigator){
+    try{
+      const reg = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") reg.update().catch(() => {}); });
+      // Quando chega uma versão nova da aplicação, recarrega uma vez para a usar
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if(reloaded || !navigator.serviceWorker.controller) return; reloaded = true; if(!$("#scrim").classList.contains("open")) location.reload(); });
+    }catch(e){ console.warn(e); }
+  }
   const { data: { session } } = await sb.auth.getSession();
   sb.auth.onAuthStateChange((ev, s) => {
     if(ev === "SIGNED_OUT"){ location.reload(); }
