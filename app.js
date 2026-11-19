@@ -1425,7 +1425,8 @@ async function doPendPrint(){
    ===================================================================== */
 const VE_STOCK = () => IS_ADMIN && !!(S.equipa[ME] || {}).veStock;
 const TIPOS_MOV = { inicial:"Stock inicial", compra:"Compra", carga:"Carga p/ carrinha", devolucao:"Devolução", transferencia:"Transferência", ajuste:"Ajuste", servico:"Aplicado em obra" };
-let stkLoc = "", stkMovF = "", stkPer = "mes";
+let stkLoc = "", stkMovF = "", stkPer = "mes", stkTipo = "servico";
+const GRUPOS_MOV = [["servico","Saídas p/ obra",["servico"]],["carga","Cargas",["carga"]],["compra","Compras",["compra","inicial"]],["mov","Devoluções e transferências",["devolucao","transferencia"]],["ajuste","Ajustes",["ajuste"]],["","Todos",null]];
 // Venda e margem de cada saída para obra: preço da linha na ordem (ou preço atual) e custo médio do artigo.
 function vendaMov(m){
   const o = m.ordemId ? S.ots[m.ordemId] : null; const ln = o && (o.pecas || []).find(x => x.c === m.codigo);
@@ -1478,7 +1479,9 @@ function viewStock(){
   const shown = stkLoc ? locs.filter(l => l.id === stkLoc) : locs;
   const fMov = m => !stkMovF || m.codigo === stkMovF || m.origem === stkMovF || m.destino === stkMovF || (stkMovF.startsWith("ed:") && m.condoId === stkMovF.slice(3));
   const movsAll = S.stk.mov.filter(fMov);
-  const movs = movsAll.slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
+  const grp = GRUPOS_MOV.find(g => g[0] === stkTipo) || GRUPOS_MOV[0];
+  const movsTipo = grp[2] ? movsAll.filter(m => grp[2].includes(m.tipo)) : movsAll;
+  const movs = movsTipo.slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
   return `<h2>Stock <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="stockExport()">⬇️ Excel</button></span></h2>
   <div class="stats">
     <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
@@ -1515,8 +1518,11 @@ function viewStock(){
   ${stkMovF ? (() => { const sv = movsAll.filter(m => m.tipo === "servico"); if(!sv.length) return ""; const t = sv.reduce((a, m) => { const v = vendaMov(m); a.q += v.q; a.venda += v.venda; a.margem += v.margem; return a; }, { q: 0, venda: 0, margem: 0 });
     const porArt = {}; for(const m of sv) porArt[m.codigo] = (porArt[m.codigo] || 0) + Number(m.qtd);
     return `<div class="panel" style="font-size:14px">Aplicado em obra: <b>${numTxt(t.q)}</b> un. · Vendido <b>${eur(t.venda)}</b> · Margem <b>${eur(t.margem)}</b>${stkMovF.startsWith("ed:") || S.stk.locais[stkMovF] ? `<div style="color:var(--muted);margin-top:4px">${Object.entries(porArt).map(([c, q]) => `${numTxt(q)}× ${esc((S.mat[c] || {}).nome || c)}`).join(" · ")}</div>` : ""}</div>`; })() : ""}
-  <div class="list">${movs.map(movItem).join("") || emptyBox("Sem movimentos.")}</div>
-  ${movs.length === 60 ? '<p style="font-size:13px;color:var(--muted)">A mostrar os 60 mais recentes. Use o filtro ou exporte para ver todos.</p>' : ""}`;
+  <div class="chips" style="margin-top:10px">${GRUPOS_MOV.map(([k, l, ts]) => { const n = ts ? movsAll.filter(m => ts.includes(m.tipo)).length : movsAll.length; return `<button class="chip ${stkTipo===k?"on":""}" onclick="stkTipo='${k}';render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`; }).join("")}</div>
+  ${stkTipo === "carga" && movsTipo.length ? (() => { const pc = {}; for(const m of movsTipo){ pc[m.destino] = (pc[m.destino] || 0) + Number(m.qtd); } return `<div class="panel" style="font-size:14px">Carregado: ${Object.entries(pc).sort((a,b) => ((S.stk.locais[a[0]]||{}).ordem||0) - ((S.stk.locais[b[0]]||{}).ordem||0)).map(([l, q]) => `${esc(locCurto(S.stk.locais[l] || {nome:l,tipo:""}))} <b>${numTxt(q)}</b>`).join(" · ")}</div>`; })() : ""}
+  ${stkTipo === "compra" && movsTipo.length ? (() => { const t = movsTipo.filter(m => m.tipo === "compra").reduce((a, m) => a + (Number(m.qtd) || 0) * (Number(m.preco) || 0), 0); return `<div class="panel" style="font-size:14px">Total comprado: <b>${eur(t)}</b> · ${numTxt(movsTipo.filter(m => m.tipo === "compra").reduce((a, m) => a + Number(m.qtd), 0))} un.</div>`; })() : ""}
+  <div class="list">${movs.map(movItem).join("") || emptyBox("Sem movimentos deste tipo.")}</div>
+  ${movsTipo.length > 60 ? '<p style="font-size:13px;color:var(--muted)">A mostrar os 60 mais recentes. Use o filtro ou exporte para ver todos.</p>' : ""}`;
 }
 function movItem(m){
   const o = m.ordemId ? S.ots[m.ordemId] : null;
@@ -1619,7 +1625,7 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines });
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
