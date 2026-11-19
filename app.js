@@ -436,7 +436,7 @@ function viewOrdens(){
   const list = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="editOt()">+ ${IS_ADMIN?"Nova":"Ocorrência"}</button></span></h2>
   <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -1260,12 +1260,54 @@ async function doBatchPrint(){
   await printHtml(parts.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
 }
 
+/* ---------- impressão das ordens por fechar, uma folha por técnico ---------- */
+const gecResp = o => { const m = /Responsável no Gecond:\s*([^\n]+)/.exec(o.notas || ""); return m ? m[1].trim() : ""; };
+const gecNum = o => { const m = /Gecond nº\s*(\d+)/.exec(o.descricao || ""); return m ? m[1] : ""; };
+// Técnico atribuído na app; se ainda não houver, o responsável indicado no Gecond.
+const pendKey = o => o.tecnico ? nm(o.tecnico) : (gecResp(o) || "Por atribuir");
+const diasDesde = s => s ? Math.max(0, Math.round((new Date(today()) - new Date(String(s).slice(0,10))) / 864e5)) : 0;
+function pendList(){
+  const tec = val("p_tec"), so = val("p_est");
+  return Object.values(S.ots).filter(o => o.estado !== "concluida" && (!so || o.estado === so) && (!tec || pendKey(o) === tec))
+    .sort((a,b) => pendKey(a).localeCompare(pendKey(b), "pt") || (a.data||a.criada||"").localeCompare(b.data||b.criada||"") || (a.numero||0) - (b.numero||0));
+}
+function pendCount(){ const n = pendList().length; const el = $("#p_count"); if(el) el.textContent = n ? `${n} ${n===1?"ordem por fechar":"ordens por fechar"}` : "Não há ordens por fechar com estes filtros"; const b = $("#p_btn"); if(b) b.disabled = !n; }
+function openPendPrint(){
+  if(!IS_ADMIN) return;
+  const abertas = Object.values(S.ots).filter(o => o.estado !== "concluida");
+  const cnt = {}; for(const o of abertas){ const k = pendKey(o); cnt[k] = (cnt[k] || 0) + 1; }
+  const nomes = Object.keys(cnt).sort((a,b) => a.localeCompare(b, "pt"));
+  openSheet("Imprimir ordens por fechar", `
+    <label class="f"><span>Técnico</span><select id="p_tec" onchange="pendCount()"><option value="">Todos (uma folha por técnico)</option>${nomes.map(n => `<option value="${esc(n)}">${esc(n)} (${cnt[n]})</option>`).join("")}</select></label>
+    <label class="f"><span>Estado</span><select id="p_est" onchange="pendCount()"><option value="">Abertas e em curso</option><option value="aberta">Só abertas</option><option value="curso">Só em curso</option></select></label>
+    <div class="note">Quando a ordem ainda não está atribuída na app, conta para o responsável indicado no Gecond.</div>
+    <div class="note" style="background:var(--blue-bg);color:var(--blue)" id="p_count"></div>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="p_btn" onclick="doPendPrint()">🖨️ Imprimir</button></div>`);
+  pendCount();
+}
+async function doPendPrint(){
+  const list = pendList(); if(!list.length) return;
+  const groups = {}; for(const o of list) (groups[pendKey(o)] ||= []).push(o);
+  const pages = Object.entries(groups).map(([t, os]) => {
+    const urg = os.filter(o => o.prioridade === "alta").length, curso = os.filter(o => o.estado === "curso").length;
+    const semApp = os.filter(o => !o.tecnico).length;
+    const rows = os.map(o => { const d = o.data || o.criada; const z = whereTxt(o); const g = gecNum(o);
+      return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(d)}</td><td style="text-align:center">${diasDesde(d)}</td><td>${esc(cName(condoOf(o)))}</td><td>${o.prioridade==="alta"?"<b>⚠ </b>":""}${esc(o.titulo)}${z && z !== "—" ? `<br><span style="color:#555">${esc(z)}</span>` : ""}</td><td>${o.estado==="curso"?"Em curso":"Aberta"}</td><td>${esc(g || "—")}</td><td style="width:60px"></td></tr>`; }).join("");
+    return `<div class="pr"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Ordens por fechar</h1><div><b>${esc(t)}</b></div></div></div>
+      <div class="meta">${os.length} ${os.length===1?"ordem":"ordens"}${curso?` · ${curso} em curso`:""}${urg?`<br><b>${urg} urgente${urg===1?"":"s"}</b>`:""}<br>Situação a ${fmtDate(today())}</div></div>
+      ${semApp ? `<div style="font-size:9pt;color:#555;margin:0 0 6px">${semApp===os.length?"Ainda não atribuídas na app — responsável segundo o Gecond.":`${semApp} ainda não atribuída${semApp===1?"":"s"} na app (responsável segundo o Gecond).`}</div>` : ""}
+      <table class="sm"><tr><th style="width:40px">Nº</th><th style="width:64px">Data</th><th style="width:36px;text-align:center">Dias</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:52px">Estado</th><th style="width:44px">Gecond</th><th style="width:60px">Feito / obs.</th></tr>${rows}</table>
+      <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+  });
+  await printHtml(pages.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
+}
+
 /* ---------- expor funções usadas no HTML ---------- */
 Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
-  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, sigClear, sigSave, sigRemove });
+  addFotos, rmFoto, viewFoto, openOt, showReport, shareReport, printOt, del, toast, onPartSel, addMat, rmMat, setPreco, setPartPrice, setTarifa, setDesloc, setSoMaterial, editCdm, saveCdm, openBatchPrint, doBatchPrint, setWeek, batchCount, openPendPrint, doPendPrint, pendCount, sigClear, sigSave, sigRemove });
 Object.defineProperty(window, "otFilter", { get: () => otFilter, set: v => { otFilter = v; } });
 Object.defineProperty(window, "condoF", { get: () => condoF, set: v => { condoF = v; } });
 Object.defineProperty(window, "techF", { get: () => techF, set: v => { techF = v; } });
