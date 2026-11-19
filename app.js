@@ -312,6 +312,19 @@ const canEditOt = o => IS_ADMIN || o.criadoPor === ME;
 
 /* ---------- WhatsApp ---------- */
 const APP_URL = location.origin + location.pathname;
+// Separa um campo com vários números ("912 345 678 / 934 567 890") em números individuais.
+function splitTels(t){
+  const out = [];
+  for(const part of String(t || "").split(/[\/,;|\n]+|\s+(?:e|ou)\s+/i)){
+    let d = part.replace(/[^0-9+]/g, ""); if(!d) continue;
+    const plus = d.startsWith("+") ? "+" : ""; d = d.replace(/\+/g, "");
+    if(!plus && !d.startsWith("00") && d.length > 9 && d.length % 9 === 0){ for(let i = 0; i < d.length; i += 9) out.push(d.slice(i, i + 9)); }
+    else out.push(plus + d);
+  }
+  return [...new Set(out)].filter(x => x.replace(/\D/g, "").length >= 6);
+}
+const fmtTel = n => /^\d{9}$/.test(n) ? n.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3") : n;
+const telBtns = t => { const ns = splitTels(t); return ns.map(n => `<a class="btn sm" href="tel:${esc(n)}">📞 ${ns.length > 1 ? esc(fmtTel(n)) : "Ligar"}</a>${waNum(n).length >= 11 && /^(\+?351)?9/.test(n.replace(/^00/, "+")) ? `<a class="btn sm wa" href="https://wa.me/${waNum(n)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`).join(""); };
 function waNum(t){ let d = String(t||"").replace(/\D/g, ""); if(d.startsWith("00")) d = d.slice(2); if(d.length === 9) d = "351" + d; return d; }
 const waLink = (tel, text) => `https://wa.me/${waNum(tel)}?text=${encodeURIComponent(text)}`;
 function waOrdem(o){
@@ -794,7 +807,7 @@ function openCondo(id, startSub){
       <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" ${IS_ADMIN?`onclick="editCdm('${x.id}')"`:""} style="cursor:${IS_ADMIN?"pointer":"default"}"><div class="bar"></div><div class="main">
         <div class="t">${x.fracao?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(x.fracao)}</span>`:""}${esc(x.nome)}</div>
         ${x.telefone?`<div class="s mono">${esc(x.telefone)}</div>`:""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
-        <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone?`<a class="btn sm" href="tel:${esc(String(x.telefone).replace(/[^0-9+]/g, ""))}">📞 Ligar</a>${waNum(x.telefone).length >= 11 ? `<a class="btn sm wa" href="https://wa.me/${waNum(x.telefone)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`:""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}">✉️ E-mail</a>`:""}</div>
+        <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone ? telBtns(x.telefone) : ""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}">✉️ E-mail</a>`:""}</div>
       </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados." + (IS_ADMIN ? "" : " Peça ao escritório para os acrescentar."))}</div>
       ${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`:""}`;
     }
