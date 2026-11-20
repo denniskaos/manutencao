@@ -692,7 +692,7 @@ function viewEquipa(){
     <label class="f" style="margin:0"><span>Manutenção A (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraA).replace(".", ",")}" onchange="setTarifa('extraA', this.value)"></label>
     <label class="f" style="margin:0"><span>Manutenção E (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraE).replace(".", ",")}" onchange="setTarifa('extraE', this.value)"></label>
   </div><div style="font-size:13px;color:var(--muted);margin-top:8px">Tarifas próprias de um técnico (ex.: 1.ª hora mais cara): abra o técnico na lista acima.</div></div>
-  ${empresaPanel()}
+  ${VE_STOCK() ? empresaPanel() : ""}
   <h3>Materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
     <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
@@ -727,6 +727,7 @@ function empresaPanel(){
 }
 function empresaTexto(){ empresaGuardar({ nome: val("em_nome"), subtitulo: val("em_sub") }); }
 async function empresaGuardar(campos){
+  if(!VE_STOCK()) return;
   const novo = { id: 1, nome: "", subtitulo: "", logo: "", ...S.empresa, ...campos }; delete novo.created_at;
   const { error } = await sb.from("empresa").upsert(novo);
   if(error){ if(/empresa/.test(error.message || "")) toast("Falta preparar a base de dados (ficheiro 07_empresa.sql)."); else writeErr(error); return; }
