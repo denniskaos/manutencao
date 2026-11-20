@@ -311,7 +311,7 @@ const sortOts = arr => arr.sort((a,b) => {
 });
 const otsSorted = () => sortOts(myOts());
 const condosSorted = () => Object.values(S.condos).sort((a,b) => (a.codigo||"~").localeCompare(b.codigo||"~", "pt", {numeric:true}) || a.nome.localeCompare(b.nome, "pt"));
-const pessoas = () => Object.values(S.equipa).sort((a,b) => (a.papel === b.papel ? (a.nome||"").localeCompare(b.nome||"", "pt") : a.papel === "tec" ? -1 : 1));
+const pessoas = () => Object.values(S.equipa).filter(p => !p.oculto || VE_STOCK() || p.id === ME).sort((a,b) => (a.papel === b.papel ? (a.nome||"").localeCompare(b.nome||"", "pt") : a.papel === "tec" ? -1 : 1));
 const tecnicos = () => pessoas().filter(p => p.ativo);
 const matList = () => Object.values(S.mat).filter(m => m.ativo !== false).sort((a,b) => (a.ordem||0) - (b.ordem||0) || a.nome.localeCompare(b.nome, "pt"));
 const partLabel = x => x.n + (x.c ? " (" + x.c + ")" : "");
@@ -734,7 +734,7 @@ function viewEquipa(){
     const mine = ots.filter(o => o.tecnico === x.id);
     const pend = mine.filter(o => o.estado !== "concluida").length;
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
-    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
+    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}${x.oculto?' <span class="badge" style="background:#e8eef7;color:var(--blue)"><i class=ico-lock></i>Só eu vejo</span>':""}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
   ${VE_STOCK() ? precosPanel() : ""}
   ${VE_STOCK() ? empresaPanel() : ""}
@@ -1023,6 +1023,7 @@ function openPessoa(id){
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
+      ${!self && VE_STOCK() ? `<button class="btn" onclick="setOculto('${id}', ${!x.oculto})"><i class=ico-lock></i>${x.oculto ? "Mostrar a todos" : "Conta de teste (só eu vejo)"}</button>` : ""}
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="${x.ativo ? `openDesativar('${id}')` : `armDelete(this,()=>setAtivo('${id}',true))`}">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
 }
 async function setTarTec(id){
@@ -1081,6 +1082,12 @@ async function desativarPassar(id){
   await setAtivo(id, false);
   const partes = [d.ots.length && d.ots.length + (d.ots.length === 1 ? " ordem" : " ordens"), d.pls.length && d.pls.length + (d.pls.length === 1 ? " plano" : " planos"), d.zonas.length && "zona " + d.zonas.join(", "), d.cars.length && "carrinha"].filter(Boolean);
   if(partes.length) setTimeout(() => toast("Conta desativada. " + partes.join(", ") + (para ? " → " + nm(para) : " ficaram por atribuir") + "."), 900);
+}
+async function setOculto(id, oculto){
+  if(!VE_STOCK()) return;
+  const { error } = await sb.from("perfis").update({ oculto }).eq("id", id);
+  if(error){ if(/oculto/.test(error.message || "")) toast("Falta preparar a base de dados (ficheiro CONTAS_OCULTAS)."); else writeErr(error); return; }
+  S.equipa[id] = { ...S.equipa[id], oculto }; closeSheet(); render(); toast(oculto ? "Só a sua conta vê esta pessoa." : "Esta pessoa volta a ser visível para todos.");
 }
 async function setAtivo(id, ativo){
   try{ await callUsers({ acao: "ativo", user_id: id, ativo }); S.equipa[id] = { ...S.equipa[id], ativo }; closeSheet(); render(); toast(ativo ? "Conta reativada." : "Conta desativada."); }
@@ -2190,7 +2197,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
