@@ -40,9 +40,9 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock"],
 };
-const NULLABLE = new Set(["equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
+const NULLABLE = new Set(["origemStock","equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
 const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 function toRow(table, o){ const r = {}; for(const k of COLS[table]){ if(!(k in o)) continue; let v = o[k]; if(NULLABLE.has(k) && (v === "" || v === undefined)) v = null; if(k === "periodo" || k === "tempo") v = Number(v) || 0; if(k === "deslocacoes") v = (v === "" || v === undefined) ? 1 : (Number(v) || 0); if(k === "soMaterial") v = v === true; r[snake(k)] = v; } return r; }
@@ -1830,7 +1830,7 @@ function guiaHtml(o){
     <h2>Destino</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
     <h2>Entrega</h2>
-    <table class="prkv">${row("Levantado por", quem)}${row("Entregue por", por)}${row("Local", "Escritório")}</table>
+    <table class="prkv">${row(o.origemStock && o.origemStock !== "principal" && o.origemStock !== "c5arm" ? "Técnico" : "Levantado por", quem)}${row("Entregue por", por)}${row("Local", o.origemStock && o.origemStock !== "principal" && S.stk.locais[o.origemStock] ? S.stk.locais[o.origemStock].nome.replace(/ —.*$/, "") : "Escritório")}</table>
     <h2>Material</h2>
     <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
@@ -2188,12 +2188,18 @@ function openSaidaDireta(editId){
     <div class="panel"><b>Material</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
       <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}">${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
       <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('saida')"><button class="btn sm" onclick="addMovLine('saida')">Adicionar</button></div></div>
+    ${VE_STOCK() ? `<label class="f"><span>Sai de</span><select id="mv_origem" onchange="origemEntrega(this.value)">${locaisList().filter(l => l.ativo !== false).map(l => `<option value="${l.id}" ${l.id === ((ed && ed.origemStock) || "principal") ? "selected" : ""}>${esc(l.nome)}</option>`).join("")}</select></label>` : ""}
     <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${ed ? esc(ed.data || today()) : today()}"></label>
-    <label class="f"><span>Quem levou *</span><input id="mv_quem" placeholder="Nome de quem levantou o material" value="${ed ? esc(entregaQuem(ed)) : ""}"></label></div>
+    <label class="f"><span id="mv_quem_l">${ed && ed.origemStock && ed.origemStock !== "principal" ? "Técnico *" : "Quem levou *"}</span><input id="mv_quem" placeholder="Nome de quem levantou o material" value="${ed ? esc(entregaQuem(ed)) : ""}"></label></div>
     <label class="f"><span>Observações</span><input id="mv_obs" placeholder="Opcional" value="${ed ? esc((ed.notas || "").replace(/\n?\[Corrigida por[^\]]*\]/g, "").trim()) : ""}"></label>
     ${VE_STOCK() && !ed ? `<div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>` : ""}
     <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveSaidaDireta(${ed ? `'${esc(editId)}'` : ""})">${ed ? "Guardar correção" : "Registar saída"}</button></div>`);
   drawMovLines();
+}
+function origemEntrega(v){
+  const car = v && v !== "principal" && v !== "c5arm"; const l = $("#mv_quem_l"); if(l) l.textContent = car ? "Técnico *" : "Quem levou *";
+  const q = $("#mv_quem"); if(q){ q.placeholder = car ? "Técnico que aplicou o material (folha em papel)" : "Nome de quem levantou o material";
+    const loc = S.stk.locais[v]; if(car && loc && !q.value){ const t = loc.tecnico ? nm(loc.tecnico) : (loc.nome.split("—")[1] || "").trim(); if(t && t !== "—") q.value = t; } }
 }
 async function saveSaidaDireta(editId){
   const ed = editId ? S.ots[editId] : null;
@@ -2205,10 +2211,15 @@ async function saveSaidaDireta(editId){
   const d = val("mv_data") || today(); const obs = val("mv_obs");
   const pecas = movLines.map(x => ({ c: x.c, n: (S.mat[x.c] || {}).nome || x.c, q: x.q }));
   const quemEntregou = ed ? ed.criadoPor : ME;
+  const origem = VE_STOCK() && $("#mv_origem") ? val("mv_origem") : ((ed && ed.origemStock) || "");
+  const daCarrinha = origem && origem !== "principal" && origem !== "c5arm";
+  const locN = origem ? (S.stk.locais[origem] || {}).nome || "" : "";
   const o = { id: ed ? ed.id : newId(), titulo: "Entrega de material", condoId: cid, equipId: "", zona: "", tecnico: ME, tipo: "corretiva", prioridade: "media", estado: "concluida",
-    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + ".\nEntregue por " + nm(quemEntregou) + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
+    data: d, descricao: daCarrinha ? "Material aplicado por " + val("mv_quem") + " a partir da " + locN.replace(/ —.*$/, "") + " (folha em papel).\nRegistado por " + nm(quemEntregou) + "." + (obs ? "\n" + obs : "")
+      : "Material levantado no escritório por " + val("mv_quem") + ".\nEntregue por " + nm(quemEntregou) + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
     deslocacoes: 0, soMaterial: true, criada: today(), criadaEm: nowIso(), criadoPor: ME, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME,
     concluida: d, concluidaEm: nowIso(), concluidoPor: ME };
+  if(origem && origem !== "principal") o.origemStock = origem; else if(ed && ed.origemStock) o.origemStock = "";
   if(ed){ Object.assign(o, { numero: ed.numero, tecnico: ed.tecnico, criada: ed.criada, criadaEm: ed.criadaEm, criadoPor: ed.criadoPor, atribuida: ed.atribuida, atribuidaEm: ed.atribuidaEm, atribuidoPor: ed.atribuidoPor });
     const ant = (ed.notas || "").match(/\[Corrigida por[^\]]*\]/g) || [];
     o.notas = [obs, ...ant, "[Corrigida por " + nm(ME) + " em " + fmtDate(today()) + " às " + new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) + "]"].filter(Boolean).join("\n"); }
@@ -2254,7 +2265,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
