@@ -170,6 +170,7 @@ async function loadAll(uid){
   mode = "ok";
   subscribeRealtime();
   render();
+  registarAcesso();
   autoReadNotifs();
   const q = new URLSearchParams(location.search).get("ordem");
   if(q && S.ots[q]){ history.replaceState(null, "", location.pathname); openOt(q); }
@@ -736,6 +737,7 @@ function viewEquipa(){
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}${x.oculto?' <span class="badge" style="background:#e8eef7;color:var(--blue)"><i class=ico-lock></i>Só eu vejo</span>':""}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
+  ${VE_STOCK() ? `<div class="actions" style="margin:8px 0 4px"><button class="btn" onclick="verAcessos()"><i class=ico-lock></i>Acessos à app (só eu vejo)</button></div>` : ""}
   ${VE_STOCK() ? precosPanel() : ""}
   ${VE_STOCK() ? empresaPanel() : ""}
   <h3>Dados</h3>
@@ -807,6 +809,42 @@ function armMat(btn, codigo){
   if(btn.classList.contains("arm")){ rmMat(codigo); return; }
   btn.classList.add("arm"); btn.textContent = "Confirmar retirar";
   setTimeout(() => { if(btn.isConnected){ btn.classList.remove("arm"); btn.textContent = "Retirar"; } }, 4000);
+}
+/* ---------- registo de acessos (só o dono vê) ---------- */
+const aparelho = () => { const u = navigator.userAgent;
+  const tipo = isIOS ? (/ipad/i.test(u) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ? "iPad" : "iPhone") : /android/i.test(u) ? "Android" : /windows/i.test(u) ? "Computador (Windows)" : /mac os/i.test(u) ? "Computador (Mac)" : "Computador";
+  const app = matchMedia("(display-mode: standalone)").matches || navigator.standalone ? "app" : "navegador";
+  return tipo + " · " + app; };
+async function registarAcesso(){
+  try{
+    const k = "ultAcesso:" + ME, ult = Number(localStorage.getItem(k) || 0);
+    if(Date.now() - ult < 30 * 60 * 1000) return;           // no máximo um registo a cada 30 min por aparelho
+    const { error } = await sb.from("acessos").insert({ user_id: ME, aparelho: aparelho() });
+    if(!error) localStorage.setItem(k, String(Date.now()));
+  }catch(_){}
+}
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && mode === "ok") registarAcesso(); });
+let acessos = null;
+async function verAcessos(){
+  if(!VE_STOCK()) return;
+  const desde = new Date(Date.now() - 30 * 86400e3).toISOString();
+  const { data, error } = await sb.from("acessos").select("*").gte("quando", desde).order("quando", { ascending: false }).limit(1000);
+  if(error){ toast(/acessos/.test(error.message || "") ? "Falta preparar a base de dados (ficheiro ACESSOS)." : "Não foi possível ler os acessos."); return; }
+  acessos = (data || []).filter(a => a.quando && !isNaN(Date.parse(a.quando))); abrirAcessos();
+}
+function abrirAcessos(filtro){
+  const lista = acessos || []; const sete = Date.now() - 7 * 86400e3;
+  const porPessoa = {};
+  for(const a of lista){ const p = porPessoa[a.user_id] || (porPessoa[a.user_id] = { ult: a, n7: 0, n30: 0 }); p.n30++; if(Date.parse(a.quando) >= sete) p.n7++; }
+  const fh = d => { const t = new Date(d); return fmtDate(iso(t)) + " " + t.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }); };
+  const pessoasT = pessoas().filter(p => p.ativo);
+  const mostrar = filtro ? lista.filter(a => a.user_id === filtro) : lista;
+  openSheet("Acessos à app", `
+    <div style="font-size:13px;color:var(--muted);margin:-4px 0 10px">Últimos 30 dias. Conta uma entrada sempre que alguém abre a app (no máximo uma a cada 30 minutos por aparelho). Só a sua conta vê isto.</div>
+    <div class="panel">${pessoasT.map(p => { const x = porPessoa[p.id]; return `<div class="trow" style="cursor:pointer;align-items:flex-start${filtro === p.id ? ";background:#fbefe2;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:8px" : ""}" onclick="abrirAcessos(${filtro === p.id ? "" : `'${p.id}'`})"><span><b style="font-weight:600">${esc(p.nome)}</b><small>${x ? "Último: " + fh(x.ult.quando) + " · " + esc(x.ult.aparelho || "") : "Nunca acedeu"}</small></span><span style="text-align:right;font-size:12.5px;color:var(--muted);white-space:nowrap"><b class="mono" style="color:var(--ink);font-size:14px">${x ? x.n7 : 0}</b> em 7 dias<br><b class="mono" style="color:var(--ink);font-size:14px">${x ? x.n30 : 0}</b> em 30 dias</span></div>`; }).join("")}</div>
+    <h3 style="margin-top:14px">${filtro ? "Acessos de " + esc(nm(filtro)) + ` <button class="btn sm" onclick="abrirAcessos()">Ver todos</button>` : "Todos os acessos"}</h3>
+    <div class="panel" style="max-height:340px;overflow:auto">${mostrar.slice(0, 200).map(a => `<div class="trow"><span>${esc(nm(a.user_id))}<small>${esc(a.aparelho || "")}</small></span><span class="mono" style="font-size:13px;white-space:nowrap">${fh(a.quando)}</span></div>`).join("") || '<div class="hint">Ainda sem acessos registados.</div>'}</div>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button></div>`);
 }
 function empresaPanel(){
   const e = S.empresa || {};
@@ -2216,7 +2254,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
