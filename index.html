@@ -17,7 +17,9 @@
 <style>
 html,body{overscroll-behavior:none;max-width:100%;touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media(max-width:700px){input,select,textarea{font-size:16px !important}}
-nav{padding-bottom:max(4px, calc(env(safe-area-inset-bottom) - 18px))}
+nav{padding-bottom:max(3px, calc(env(safe-area-inset-bottom) - 20px));flex-direction:column;align-items:center}
+.navver{font:10.5px/1 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted);opacity:.7;padding:0 0 2px;height:11px}
+.navver:empty{display:none}
 .toast{bottom:calc(86px + env(safe-area-inset-bottom))}
 .login{max-width:380px;margin:40px auto;padding:0 18px}
 .login .logo{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:700;margin-bottom:6px}
@@ -52,7 +54,7 @@ body{display:flex;flex-direction:column;height:100vh;height:100dvh;height:var(--
 main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:16px max(14px, calc((100% - 860px) / 2)) 28px;box-sizing:border-box;width:100%}
 nav{position:relative;flex:0 0 auto;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:center;z-index:5}
 nav .in{display:flex;width:100%;max-width:860px}
-nav button{flex:1;border:0;background:none;padding:9px 4px 8px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button{flex:1;border:0;background:none;padding:9px 4px 5px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
 nav button svg{width:22px;height:22px}
 nav button.on{color:var(--ink)}
 @media(max-width:440px){.who-n{display:none}}
@@ -120,7 +122,6 @@ table.stk tr:hover td{background:#fbf8f2}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.dark{background:var(--head);border-color:var(--head);color:#fff}
 .btn.danger{color:var(--red)}
-.versao{text-align:center;font-size:11.5px;color:var(--muted);opacity:.75;margin:22px 0 2px;font-family:"IBM Plex Mono",ui-monospace,monospace}
 .btn.ico{display:inline-flex;align-items:center;gap:6px}.btn.ico svg{width:17px;height:17px;flex:0 0 auto}
 .btn.danger.arm{background:var(--red);border-color:var(--red);color:#fff}
 .btn.sm{padding:6px 10px;font-size:13px}
@@ -217,10 +218,10 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <body>
 <header><div class="row"><h1><span class="dot"></span>Manutenção</h1><span style="display:flex;align-items:center;gap:8px"><span class="sync" id="sync"></span><span id="who" style="display:flex;align-items:center;gap:6px;font-size:13px"></span></span></div></header>
 <main id="app"><div class="empty">A carregar…</div></main>
-<nav><div class="in" id="nav"></div></nav>
+<nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=60"></script>
-<script type="module" src="app.js?v=60"></script>
+<script src="config.js?v=61"></script>
+<script type="module" src="app.js?v=61"></script>
 </body>
 </html>

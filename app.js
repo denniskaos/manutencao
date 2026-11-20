@@ -708,13 +708,14 @@ const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v
 const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
 function render(){
   renderNav(); renderWho();
-  if(mode === "login"){ $("#app").innerHTML = viewLogin() + versaoHtml(); return; }
+  { const nv = document.getElementById("navver"); if(nv && VERSAO) nv.textContent = "Versão " + VERSAO; }
+  if(mode === "login"){ $("#app").innerHTML = viewLogin(); return; }
   if(mode !== "ok"){ $("#app").innerHTML = viewEstado(); return; }
   if(!IS_ADMIN && (tab === "prev" || tab === "equipa")) tab = "inicio";
   if(tab === "stock" && !VE_STOCK()) tab = "inicio";
   const v = {inicio:viewInicio, ordens:viewOrdens, prev:viewPrev, condos:viewCondos, equipa:viewEquipa, stock:viewStock}[tab];
   const active = document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.classList.contains("search");
-  $("#app").innerHTML = v() + versaoHtml();
+  $("#app").innerHTML = v();
   if(active){ const s = $("input.search"); if(s){ s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
   if(sheetRefresh) sheetRefresh();
 }
