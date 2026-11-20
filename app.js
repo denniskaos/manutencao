@@ -1555,7 +1555,7 @@ function guiaPronta(id){
   openSheet("📦 Entrega registada", `
     <p style="margin:0 0 10px">Guia nº <b class="mono">${esc(numOt(o) || "—")}</b> · ${esc(cName(condoOf(o)))}<br>Levou: <b>${esc(entregaQuem(o))}</b> · Entregou: <b>${esc(nm(o.criadoPor))}</b></p>
     <div class="panel"><div class="parts">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
-    <p style="font-size:13px;color:var(--muted)">Imprima agora e peça a quem levou o material para assinar. A guia fica guardada em <b>Ordens → 📦 Entregas</b>, para voltar a consultar ou imprimir.</p>
+    <p style="font-size:13px;color:var(--muted)">Imprima agora e assine a guia. A guia fica guardada em <b>Ordens → 📦 Entregas</b>, para voltar a consultar ou imprimir.</p>
     <div class="actions"><button class="btn" onclick="closeSheet()">Fechar</button><span class="sp"></span><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
 }
 function guiaHtml(o){
@@ -1571,9 +1571,9 @@ function guiaHtml(o){
     <h2>Entrega</h2>
     <table class="prkv">${row("Levantado por", quem)}${row("Entregue por", por)}${row("Local", "Escritório / armazém")}</table>
     <h2>Material</h2>
-    <table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:70px;text-align:right">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td></tr>`).join("")}</table>
+    <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
-    <div class="sig"><div><span>Entregue por<br>${esc(por)}</span></div><div><span>Recebido por<br>${esc(quem)}</span></div></div>
+    <div class="sig"><div><span>Entregue por<br>${esc(por)}</span></div></div>
     <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
   return via("Via do escritório");
 }
