@@ -17,7 +17,7 @@
 <style>
 html,body{overscroll-behavior:none;max-width:100%;touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media(max-width:700px){input,select,textarea{font-size:16px !important}}
-nav{padding-bottom:max(3px, calc(env(safe-area-inset-bottom) - 20px));flex-direction:column;align-items:center}
+nav{padding-bottom:max(3px, calc(env(safe-area-inset-bottom) - 16px));flex-direction:column;align-items:center}
 .navver{font:10.5px/1 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted);opacity:.7;padding:0 0 2px;height:11px}
 .navver:empty{display:none}
 .toast{bottom:calc(86px + env(safe-area-inset-bottom))}
@@ -47,6 +47,7 @@ header{background:var(--head);color:#fff;padding:calc(14px + env(safe-area-inset
 header .row{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:860px;margin:0 auto}
 header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:9px}
 header h1 .dot{width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block}
+header h1 .hlogo{width:32px;height:32px;overflow:hidden;border-radius:50%;background:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}header h1 .hlogo img{width:27px;height:27px;display:block;margin-top:1px}
 .sync{font-size:12px;color:#b8c2c8}
 /* Montagem de app: barra de cima e menu de baixo parados; só o meio desliza. */
 html,body{height:100%}
@@ -216,12 +217,12 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 
 </head>
 <body>
-<header><div class="row"><h1><span class="dot"></span>Manutenção</h1><span style="display:flex;align-items:center;gap:8px"><span class="sync" id="sync"></span><span id="who" style="display:flex;align-items:center;gap:6px;font-size:13px"></span></span></div></header>
+<header><div class="row"><h1><span class="hlogo"><img src="logo-caixa.png" alt="FLAT"></span>Manutenção</h1><span style="display:flex;align-items:center;gap:8px"><span class="sync" id="sync"></span><span id="who" style="display:flex;align-items:center;gap:6px;font-size:13px"></span></span></div></header>
 <main id="app"><div class="empty">A carregar…</div></main>
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=61"></script>
-<script type="module" src="app.js?v=61"></script>
+<script src="config.js?v=62"></script>
+<script type="module" src="app.js?v=62"></script>
 </body>
 </html>
