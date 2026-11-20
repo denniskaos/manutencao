@@ -143,6 +143,7 @@ async function loadAll(uid){
     ]);
     const { data: mats } = await sb.from("materiais").select("*");
     S.mat = Object.fromEntries((mats || []).map(m => [m.codigo, m]));
+    S.matGrupoCol = (mats || []).some(m => "grupo" in m);
     S.equipa = Object.fromEntries(perfis.map(p => [p.id, fromRow(p)]));
     S.condos = Object.fromEntries(condos.map(r => [r.id, fromRow(r)]));
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
@@ -713,30 +714,42 @@ function precosPanel(){
   </div>
   <h3>Preços dos materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel mats">
-    ${GRUPOS_MAT.map(([g, nome]) => { const l = matList().filter(m => grupoMat(m) === g); if(!l.length) return "";
+    ${gruposMat().map(g => { const nome = g; const l = matList().filter(m => grupoMat(m) === g); if(!l.length) return "";
       const ps = l.map(m => S.precos[m.codigo]).filter(v => v !== undefined && v !== null);
       const faixa = ps.length ? (Math.min(...ps) === Math.max(...ps) ? numPt(ps[0]) : numPt(Math.min(...ps)) + "–" + numPt(Math.max(...ps))) + " €" : "sem preços";
       const aberto = matOpen.has(g);
-      return `<div class="mgrp${aberto ? " on" : ""}" onclick="togMat('${g}')"><b>${aberto ? "▾" : "▸"} ${esc(nome)}</b><span>${l.length} ${l.length === 1 ? "material" : "materiais"}${aberto ? "" : " · " + faixa}</span></div>
-      ${aberto ? l.map(m => `<div class="mrow"><div class="mn" onclick="matSel=matSel==='${esc(m.codigo)}'?'':'${esc(m.codigo)}';render()"><div class="t">${esc(m.nome)}</div>${matSel === m.codigo ? `<div class="c">${esc(m.codigo)} · <button class="mx" onclick="event.stopPropagation();armMat(this,'${esc(m.codigo)}')">Retirar</button></div>` : ""}</div>${eurIn(numPt(S.precos[m.codigo]), `setPreco('${esc(m.codigo)}', this.value)`)}</div>`).join("") : ""}`; }).join("")}
+      return `<div class="mgrp${aberto ? " on" : ""}" onclick="togMat(${esc(JSON.stringify(g))})"><b>${aberto ? "▾" : "▸"} ${esc(nome)}</b><span>${l.length} ${l.length === 1 ? "material" : "materiais"}${aberto ? "" : " · " + faixa}</span></div>
+      ${aberto ? l.map(m => `<div class="mrow"><div class="mn" onclick="matSel=matSel==='${esc(m.codigo)}'?'':'${esc(m.codigo)}';render()"><div class="t">${esc(m.nome)}</div>${matSel === m.codigo ? `<div class="c">${esc(m.codigo)} · <button class="mx" onclick="event.stopPropagation();armMat(this,'${esc(m.codigo)}')">Retirar</button></div>
+          <select class="mgsel" onclick="event.stopPropagation()" onchange="mudarGrupo('${esc(m.codigo)}', this.value)"><option value="">Mudar de grupo…</option>${gruposMat().filter(x => x !== g).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}<option value="__novo">+ Novo grupo…</option></select>` : ""}</div>${eurIn(numPt(S.precos[m.codigo]), `setPreco('${esc(m.codigo)}', this.value)`)}</div>`).join("") : ""}`; }).join("")}
     <details class="mnovo"><summary>+ Novo material</summary>
       <div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Código</span><input id="m_cod" placeholder="Ex.: LAMP-E27" style="text-transform:uppercase"></label>
       <label class="f" style="margin:0"><span>Descrição</span><input id="m_nome" placeholder="Ex.: Lâmpada E27"></label></div>
-      <label class="f" style="margin:8px 0 0"><span>Grupo</span><select id="m_grp">${GRUPOS_MAT.map(([g, nome]) => `<option value="${g}">${esc(nome)}</option>`).join("")}</select></label>
+      <label class="f" style="margin:8px 0 0"><span>Grupo</span><select id="m_grp" onchange="onGrpSel(this.value)">${gruposMat().map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}<option value="__novo">+ Novo grupo…</option></select></label>
+      <label class="f" id="m_grp_novo_w" style="margin:8px 0 0;display:none"><span>Nome do novo grupo</span><input id="m_grp_novo" placeholder="Ex.: Canalização"></label>
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn pri sm" onclick="addMat()">Adicionar</button></div>
     </details>
   </div>`;
 }
-// Grupos dos materiais: guardados no campo "ordem" (100 = Limpeza, 200 = Placas, 300 = Iluminação, 900 = Outros).
-const GRUPOS_MAT = [["limpeza", "Limpeza", 100], ["placas", "Placas", 200], ["ilum", "Iluminação", 300], ["outros", "Outros", 900]];
+// Grupos dos materiais: campo "grupo" (nome livre). Sem o campo, deduz-se pelo código.
+const GRUPOS_BASE = ["Limpeza", "Placas", "Iluminação"];
 function grupoMat(m){
+  if(m.grupo) return m.grupo;
   const o = Number(m.ordem) || 0;
-  if(o >= 100){ const g = [...GRUPOS_MAT].reverse().find(x => o >= x[2]); return g ? g[0] : "outros"; }
+  if(o >= 900) return "Outros"; if(o >= 300) return "Iluminação"; if(o >= 200) return "Placas"; if(o >= 100) return "Limpeza";
   const t = (m.codigo + " " + m.nome).toUpperCase();
-  if(/LAMP|FOCO|LÂMPADA|LED/.test(t)) return "ilum";
-  if(/PLACA|QUADRO|SINAL/.test(t)) return "placas";
-  if(/DET|LIX|LIMPA|DESENTUP|DETERG/.test(t)) return "limpeza";
-  return "outros";
+  if(/LAMP|FOCO|LÂMPADA|LED/.test(t)) return "Iluminação";
+  if(/PLACA|QUADRO|SINAL/.test(t)) return "Placas";
+  if(/DET|LIX|LIMPA|DESENTUP|DETERG/.test(t)) return "Limpeza";
+  return "Outros";
+}
+const gruposMat = () => [...new Set([...matList().map(grupoMat), ...GRUPOS_BASE])].sort((a, b) => a.localeCompare(b, "pt"));
+function onGrpSel(v){ const w = document.getElementById("m_grp_novo_w"); if(w) w.style.display = v === "__novo" ? "" : "none"; if(v === "__novo") setTimeout(() => { const e = document.getElementById("m_grp_novo"); if(e) e.focus(); }, 0); }
+async function mudarGrupo(codigo, g){
+  if(!VE_STOCK()) return;
+  if(g === "__novo"){ g = (prompt("Nome do novo grupo:") || "").trim(); if(!g){ render(); return; } }
+  if(!S.matGrupoCol){ toast("Falta preparar a base de dados para grupos novos (ficheiro GRUPOS)."); render(); return; }
+  const { error } = await sb.from("materiais").update({ grupo: g }).eq("codigo", codigo); if(error) return writeErr(error);
+  S.mat[codigo] = { ...S.mat[codigo], grupo: g }; matOpen.add(g); matSel = ""; render(); toast("Passou para " + g + ".");
 }
 let matOpen = new Set(), matSel = "";
 function togMat(g){ matOpen.has(g) ? matOpen.delete(g) : matOpen.add(g); const y = scroller().scrollTop; render(); scroller().scrollTop = y; }
@@ -990,12 +1003,16 @@ async function addMat(){
   if(!VE_STOCK()) return;
   const codigo = val("m_cod").toUpperCase().replace(/\s+/g, "-"), nome = val("m_nome");
   if(!codigo || !nome){ toast("Indique o código e a descrição."); return; }
-  const g = GRUPOS_MAT.find(x => x[0] === val("m_grp")) || GRUPOS_MAT[3];
-  const ordem = Math.max(g[2], ...Object.values(S.mat).filter(m => grupoMat(m) === g[0] && (m.ordem || 0) >= g[2]).map(m => m.ordem)) + 1;
-  const row = { codigo, nome, ordem, ativo: true };
+  let g = val("m_grp"); if(g === "__novo") g = val("m_grp_novo");
+  if(!g){ toast("Indique o nome do novo grupo."); return; }
+  const novoGrupo = !gruposMat().includes(g);
+  if(!S.matGrupoCol && novoGrupo){ toast("Falta preparar a base de dados para grupos novos (ficheiro GRUPOS)."); return; }
+  const ordem = Math.max(0, ...Object.values(S.mat).map(m => m.ordem || 0)) + 1;
+  const row = { codigo, nome, ordem, ativo: true, ...(S.matGrupoCol ? { grupo: g } : {}) };
+  if(!S.matGrupoCol) row.ordem = { "Limpeza": 100, "Placas": 200, "Iluminação": 300 }[g] + ordem || 900 + ordem;
   const { error } = await sb.from("materiais").upsert(row);
   if(error) return writeErr(error);
-  S.mat[codigo] = row; matOpen.add(g[0]); render(); toast("Material adicionado.");
+  S.mat[codigo] = row; matOpen.add(g); render(); toast("Material adicionado.");
 }
 async function rmMat(codigo){
   if(!VE_STOCK()) return;
@@ -2084,7 +2101,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, armMat, togMat, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
