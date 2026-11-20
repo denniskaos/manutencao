@@ -685,20 +685,8 @@ function viewEquipa(){
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · ✍️ ${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
-  <h3>Tarifas</h3>
-  <div class="panel"><div class="grid2">
-    <label class="f" style="margin:0"><span>Deslocação (€ por deslocação)</span><input inputmode="decimal" value="${String(S.tarifas.deslocacao).replace(".", ",")}" onchange="setTarifa('deslocacao', this.value)"></label>
-    <label class="f" style="margin:0"><span>Mão de obra (€ por hora)</span><input inputmode="decimal" value="${String(S.tarifas.hora).replace(".", ",")}" onchange="setTarifa('hora', this.value)"></label>
-    <label class="f" style="margin:0"><span>Manutenção A (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraA).replace(".", ",")}" onchange="setTarifa('extraA', this.value)"></label>
-    <label class="f" style="margin:0"><span>Manutenção E (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraE).replace(".", ",")}" onchange="setTarifa('extraE', this.value)"></label>
-  </div><div style="font-size:13px;color:var(--muted);margin-top:8px">Tarifas próprias de um técnico (ex.: 1.ª hora mais cara): abra o técnico na lista acima.</div></div>
+  ${VE_STOCK() ? precosPanel() : ""}
   ${VE_STOCK() ? empresaPanel() : ""}
-  <h3>Materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
-  <div class="panel">
-    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
-    <div class="parts">${matList().map(m => `<div class="part"><span class="n">${esc(m.nome)} <span class="mono" style="color:var(--muted);font-size:12px">${esc(m.codigo)}</span></span><input inputmode="decimal" value="${S.precos[m.codigo] !== undefined ? String(S.precos[m.codigo]).replace(".", ",") : ""}" placeholder="0,00" onchange="setPreco('${esc(m.codigo)}', this.value)" style="width:84px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff"> €<button class="btn sm" onclick="rmMat('${esc(m.codigo)}')" aria-label="Retirar">✕</button></div>`).join("") || '<span style="color:var(--muted)">Sem materiais.</span>'}</div>
-    <div class="addpart" style="margin-top:10px"><input id="m_cod" placeholder="Código (ex.: LAMP-E27)" style="flex:0 0 38%;text-transform:uppercase"><input id="m_nome" placeholder="Descrição (ex.: Lâmpada E27)" style="flex:1"><button class="btn sm" onclick="addMat()">Adicionar</button></div>
-  </div>
   <h3>Dados</h3>
   <div class="panel" style="font-size:14px">O plano gratuito do Supabase <b>não faz cópias de segurança</b>. Faça uma cópia <b>uma vez por semana</b> e guarde o ficheiro fora do computador (pen, Google Drive, OneDrive ou e-mail para si próprio). Se um dia for preciso, os dados repõem-se a partir deste ficheiro.
     <div style="margin-top:8px;color:var(--muted)">Última cópia neste aparelho: <b>${ultimaCopia() ? fmtDate(ultimaCopia()) : "nunca"}</b> · Fotografias: ${Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0)} (cerca de ${Math.round(Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0) * 0.18)} MB de 1 000 MB gratuitos)</div>
@@ -710,6 +698,36 @@ const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v
 const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
 const prLogo = () => (S.empresa || {}).logo ? `<img src="${esc(S.empresa.logo)}" alt="">` : "";
 const prMarca = () => { const e = S.empresa || {}; return e.nome ? " · " + esc(e.nome) + (e.subtitulo ? " — " + esc(e.subtitulo) : "") : ""; };
+const eurIn = (val, on, ph = "0,00") => `<span class="eurin"><input inputmode="decimal" value="${val}" placeholder="${ph}" onchange="${on}"><span>€</span></span>`;
+const numPt = v => v === undefined || v === null || v === "" || isNaN(Number(v)) ? "" : Number(v).toFixed(2).replace(".", ",");
+let matQ = "";
+function precosPanel(){
+  const T = S.tarifas;
+  const lista = matList().filter(m => !matQ || hit(m.nome + " " + m.codigo, matQ));
+  return `<h3>Tarifas</h3>
+  <div class="panel tarifas">
+    <div class="trow"><span>Mão de obra <small>por hora</small></span>${eurIn(numPt(T.hora), "setTarifa('hora', this.value)")}</div>
+    <div class="trow"><span>Deslocação <small>por deslocação</small></span>${eurIn(numPt(T.deslocacao), "setTarifa('deslocacao', this.value)")}</div>
+    <div class="trow"><span>Manutenção A</span>${eurIn(numPt(T.extraA), "setTarifa('extraA', this.value)")}</div>
+    <div class="trow"><span>Manutenção E</span>${eurIn(numPt(T.extraE), "setTarifa('extraE', this.value)")}</div>
+    <div class="hint">Tarifas próprias de um técnico (ex.: Duarte, 40 € + 20 €/h, sem deslocações): abra o técnico na lista acima.</div>
+  </div>
+  <h3>Preços dos materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
+  <div class="panel mats">
+    ${matList().length > 8 ? `<input class="search" id="matq" placeholder="Procurar material…" value="${esc(matQ)}" oninput="matQ=this.value;render();setTimeout(()=>{const e=document.getElementById('matq');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length)}},0)" style="margin:0 0 6px">` : ""}
+    ${lista.map(m => `<div class="mrow"><div class="mn"><div class="t">${esc(m.nome)}</div><div class="c">${esc(m.codigo)}</div></div>${eurIn(numPt(S.precos[m.codigo]), `setPreco('${esc(m.codigo)}', this.value)`)}<button class="mx" title="Retirar" aria-label="Retirar ${esc(m.nome)}" onclick="armMat(this,'${esc(m.codigo)}')">${ICONS.apagar}</button></div>`).join("") || '<div class="hint" style="padding:8px 0">Nenhum material encontrado.</div>'}
+    <details class="mnovo"><summary>+ Novo material</summary>
+      <div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Código</span><input id="m_cod" placeholder="Ex.: LAMP-E27" style="text-transform:uppercase"></label>
+      <label class="f" style="margin:0"><span>Descrição</span><input id="m_nome" placeholder="Ex.: Lâmpada E27"></label></div>
+      <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn pri sm" onclick="addMat()">Adicionar</button></div>
+    </details>
+  </div>`;
+}
+function armMat(btn, codigo){
+  if(btn.classList.contains("arm")){ rmMat(codigo); return; }
+  btn.classList.add("arm"); btn.innerHTML = "Retirar?";
+  setTimeout(() => { if(btn.isConnected){ btn.classList.remove("arm"); btn.innerHTML = ICONS.apagar; } }, 4000);
+}
 function empresaPanel(){
   const e = S.empresa || {};
   return `<h3>Empresa nas impressões</h3>
@@ -915,8 +933,8 @@ function openPessoa(id){
     <label class="f"><span>Perfil</span><select id="e_papel" ${self?"disabled":""}><option value="tec" ${x.papel==="tec"?"selected":""}>Técnico</option><option value="admin" ${x.papel==="admin"?"selected":""}>Administrativo</option></select></label></div>
     ${self?'<p style="font-size:13px;color:var(--muted);margin-top:-4px">Não pode mudar o seu próprio perfil.</p>':""}
     <div class="actions"><span class="sp"></span><button class="btn pri" onclick="savePessoa('${id}')">Guardar</button></div>
-    ${x.papel === "tec" ? (() => { const tt = S.tarTec[id]; return `<h3>Tarifa de mão de obra</h3>
-    <div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">Deixe em branco para usar a tarifa normal (${eur(S.tarifas.hora)}/h). Só os administrativos veem.</div>
+    ${x.papel === "tec" && VE_STOCK() ? (() => { const tt = S.tarTec[id]; return `<h3>Tarifa de mão de obra</h3>
+    <div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">Deixe em branco para usar a tarifa normal (${eur(S.tarifas.hora)}/h).</div>
       <div class="grid2"><label class="f" style="margin:0"><span>1.ª hora (€)</span><input id="tt_h1" inputmode="decimal" value="${tt ? String(tt.hora1).replace(".", ",") : ""}" placeholder="Ex.: 40"></label>
       <label class="f" style="margin:0"><span>Horas seguintes (€/h)</span><input id="tt_h" inputmode="decimal" value="${tt ? String(tt.hora).replace(".", ",") : ""}" placeholder="Ex.: 20"></label></div>
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="setTarTec('${id}')">Guardar tarifa</button></div></div>`; })() : ""}
@@ -926,6 +944,7 @@ function openPessoa(id){
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="armDelete(this,()=>setAtivo('${id}',${!x.ativo}))">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
 }
 async function setTarTec(id){
+  if(!VE_STOCK()) return;
   const a = val("tt_h1"), b = val("tt_h");
   if(!a && !b){ const { error } = await sb.from("tarifas_tecnico").delete().eq("user_id", id); if(error) return writeErr(error); delete S.tarTec[id]; render(); toast("Usa a tarifa normal."); return; }
   const h1 = parsePrice(a), h = parsePrice(b); if(h1 === null || h === null){ toast("Preencha os dois valores."); return; }
@@ -951,6 +970,7 @@ async function setAtivo(id, ativo){
 
 /* ---------- materiais do armazém ---------- */
 async function addMat(){
+  if(!VE_STOCK()) return;
   const codigo = val("m_cod").toUpperCase().replace(/\s+/g, "-"), nome = val("m_nome");
   if(!codigo || !nome){ toast("Indique o código e a descrição."); return; }
   const ordem = Math.max(0, ...Object.values(S.mat).map(m => m.ordem || 0)) + 1;
@@ -960,6 +980,7 @@ async function addMat(){
   S.mat[codigo] = row; render(); toast("Material adicionado.");
 }
 async function rmMat(codigo){
+  if(!VE_STOCK()) return;
   const m = S.mat[codigo]; if(!m) return;
   const { error } = await sb.from("materiais").update({ ativo: false }).eq("codigo", codigo);
   if(error) return writeErr(error);
@@ -967,6 +988,7 @@ async function rmMat(codigo){
 }
 
 async function setPreco(codigo, v){
+  if(!VE_STOCK()) return;
   const preco = parsePrice(v); if(preco === null && String(v).trim() !== ""){ toast("Preço inválido."); return; }
   const { error } = preco === null ? await sb.from("materiais_precos").delete().eq("codigo", codigo) : await sb.from("materiais_precos").upsert({ codigo, preco });
   if(error) return writeErr(error);
@@ -974,6 +996,7 @@ async function setPreco(codigo, v){
   toast("Preço guardado: " + (S.mat[codigo] || {}).nome + (preco === null ? " sem preço" : " " + eur(preco)));
 }
 async function setTarifa(k, v){
+  if(!VE_STOCK()) return;
   const n = parsePrice(v); if(n === null){ toast("Valor inválido."); return; }
   const t = { ...S.tarifas, [k]: n };
   const { error } = await sb.from("tarifas").upsert({ id: 1, deslocacao: t.deslocacao, hora: t.hora, ...(t.novas ? { extra_a: t.extraA, extra_e: t.extraE } : {}) });
@@ -2041,9 +2064,9 @@ function stockExport(){
 }
 
 /* ---------- expor funções usadas no HTML ---------- */
-Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
+Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, armMat, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,

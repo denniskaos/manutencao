@@ -123,6 +123,23 @@ table.stk tr:hover td{background:#fbf8f2}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.dark{background:var(--head);border-color:var(--head);color:#fff}
 .btn.danger{color:var(--red)}
+.eurin{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 10px 0 0;flex:0 0 auto}
+.eurin input{width:72px;border:0;background:transparent;text-align:right;padding:8px 4px 8px 8px;font:inherit;font-variant-numeric:tabular-nums;outline:none}
+.eurin span{color:var(--muted);font-size:14px}
+.eurin:focus-within{border-color:var(--accent)}
+.panel.tarifas{padding-top:4px;padding-bottom:10px}
+.trow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.trow span small{display:block;color:var(--muted);font-size:12px}
+.panel .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+.mrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+.mrow .mn{flex:1;min-width:0}
+.mrow .mn .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .mn .c{font:11px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .mx{flex:0 0 auto;border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;cursor:pointer;display:flex;align-items:center;font-size:12px;font-weight:600}
+.mrow .mx svg{width:18px;height:18px}
+.mrow .mx.arm{background:var(--red);color:#fff;padding:6px 8px}
+details.mnovo summary{cursor:pointer;color:var(--accent);font-weight:600;padding:10px 0 2px;list-style:none}
+details.mnovo summary::-webkit-details-marker{display:none}
 .btn.ico{display:inline-flex;align-items:center;gap:6px}.btn.ico svg{width:17px;height:17px;flex:0 0 auto}
 .btn.danger.arm{background:var(--red);border-color:var(--red);color:#fff}
 .btn.sm{padding:6px 10px;font-size:13px}
@@ -222,7 +239,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=67"></script>
-<script type="module" src="app.js?v=67"></script>
+<script src="config.js?v=69"></script>
+<script type="module" src="app.js?v=69"></script>
 </body>
 </html>
