@@ -420,6 +420,7 @@ async function loadMeteo(force){
     if(error || !data || data.erro || !data.dias) throw (error || new Error(data && data.erro));
     meteo = data; lsSet("meteo2", { t: Date.now(), d: data, pos: meteoPos });
     renderWho(); if(sheetRefresh && document.getElementById("wxSheet")) sheetRefresh();
+    if(tab === "inicio" && mode === "ok" && !$("#scrim").classList.contains("open")){ const y = scroller().scrollTop; render(); scroller().scrollTop = y; }
   }catch(e){ console.warn("meteo", e); }
 }
 function meteoHoje(){ if(!meteo || !meteo.dias) return null; const t = today(); return meteo.dias.find(d => d.data === t) || meteo.dias[0]; }
@@ -439,7 +440,6 @@ function openMeteo(){
       <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${ondeTxt} <button class="btn sm" onclick="loadMeteo(true)" style="margin-left:4px">Atualizar</button></div>
       <div class="plist" style="border:1px solid var(--line);border-radius:var(--r);margin:0;background:var(--card)">${meteo.dias.map(d => { const nome = d.data === t ? "Hoje" : d.data === am ? "Amanhã" : DIAS_SEM[new Date(d.data + "T12:00:00").getDay()];
         return `<div class="prow" style="cursor:default"><span style="font-size:28px;line-height:1">${WX[d.tipo] || "🌡️"}</span><span class="pn"><b>${nome}</b> <span style="color:var(--muted);font-size:13px">${fmtDate(d.data).slice(0, 5)}</span><small>${esc(d.desc)}${d.vento ? " · vento " + esc(d.vento) : ""}</small></span><span style="text-align:right;white-space:nowrap"><b>${Math.round(d.tMax)}°</b> <span style="color:var(--muted)">${Math.round(d.tMin)}°</span><br><span style="font-size:13px;color:${d.prob >= 50 ? "var(--blue)" : "var(--muted)"}">💧 ${Math.round(d.prob)}%</span></span></div>`; }).join("")}</div>
-      ${meteo.dias.slice(0, 3).some(d => d.prob >= 70) ? `<div class="note" style="margin-top:10px">🌧️ Chuva provável nos próximos dias — bom momento para verificar caleiros, ralos e infiltrações; trabalhos em telhados e terraços ficam para dias secos.</div>` : ""}
       <p style="font-size:12px;color:var(--muted);margin-top:10px">Fonte: ${esc(meteo.fonte || "IPMA")}. A localização serve só para escolher o concelho mais próximo; não fica guardada.${meteo.atualizado ? " Atualizado: " + esc(String(meteo.atualizado).replace("T", " ").slice(0, 16)) + "." : ""}</p></div>`;
   };
   openSheet("Meteorologia", draw(), () => { const b = document.querySelector("#sheet .body"); if(b && document.getElementById("wxSheet")) b.innerHTML = draw(); });
@@ -518,7 +518,7 @@ function viewInicio(){
     const prox = mine.filter(o => o.estado !== "concluida" && o.data && o.data > t);
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     const first = ((S.equipa[ME]||{}).nome||"").split(" ")[0];
-    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${installBanner()}${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
+    return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${meteoAviso()}${installBanner()}${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
     <div class="stats">
       ${statCard(hoje.length, "Para hoje / em atraso", "otFilter='ativas';go('ordens')", true)}
       ${statCard(mine.filter(o=>o.estado==="curso").length, "Em curso", "otFilter='curso';go('ordens')")}
@@ -538,7 +538,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}
+  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}${meteoAviso()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -1166,6 +1166,13 @@ async function backupCompleto(btn){
   toast(falhas.length ? "Cópia feita, mas sem: " + falhas.join(", ") : "Cópia de segurança guardada (" + Object.values(out.tabelas).reduce((a, r) => a + r.length, 0) + " registos).");
   render();
 }
+// Conselho do tempo para o ecrã principal (técnicos e escritório)
+function meteoAviso(){
+  if(!meteo || !meteo.dias || !meteo.dias.length) return "";
+  const prox = meteo.dias.slice(0, 3);
+  if(prox.some(d => d.prob >= 70)) return `<div class="note wxnote" onclick="openMeteo()"><span style="font-size:22px;line-height:1">🌧️</span><span><b>Chuva provável nos próximos dias.</b> Bom momento para verificar caleiros, ralos e infiltrações; trabalhos em telhados e terraços ficam para dias secos.</span></div>`;
+  return "";
+}
 function copiaBanner(){
   if(!IS_ADMIN) return "";
   const u = ultimaCopia(); const dias = u ? diffDays(today(), u) : null;
@@ -1777,7 +1784,7 @@ function guiaHtml(o){
     <h2>Material</h2>
     <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
-    <div class="sig"><div><span>Entregue por<br>${esc(por)}</span></div></div>
+    ${(() => { const sg = o.criadoPor && (S.equipa[o.criadoPor] || {}).assinatura; return `<div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>Entregue por<br>${esc(por)}</span></div></div>`; })()}
     <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
   return via("Via do escritório");
 }
