@@ -581,7 +581,7 @@ function viewOrdens(){
   return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
   ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","📋 Ocorrências", base.length - nTrab - nEntrB],["trab","🔧 Trabalhos dos técnicos", nTrab],["entr","📦 Entregas", nEntr]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
   ${otOrig === "entr" ? "" : `<div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>`}
-  ${techFilterSel()}${condoFilterSel()}
+  <div class="frow">${techFilterSel()}${condoFilterSel()}</div>
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
   <div class="${IS_ADMIN ? "pgrp plain" : "list"}" id="lst">${list.length ? (IS_ADMIN ? `<div class="plist">${list.slice(0, listMax).map(o => otRow(o, !!condoF)).join("")}</div>${list.length > listMax ? `<div class="actions" style="justify-content:center;margin:8px 0"><button class="btn" onclick="listMax+=100;renderListOnly()">Mostrar mais (${list.length - listMax} restantes)</button></div>` : ""}` : list.map(o=>otItem(o, !!condoF)).join("")) : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
 }
@@ -704,15 +704,15 @@ const numPt = v => v === undefined || v === null || v === "" || isNaN(Number(v))
 let matQ = "";
 function precosPanel(){
   const T = S.tarifas;
-  return `<h3>Tarifas</h3>
+  return `<div class="duo"><div><h3>Tarifas</h3>
   <div class="panel tarifas">
     <div class="trow"><span>Mão de obra <small>por hora</small></span>${eurIn(numPt(T.hora), "setTarifa('hora', this.value)")}</div>
     <div class="trow"><span>Deslocação <small>por deslocação</small></span>${eurIn(numPt(T.deslocacao), "setTarifa('deslocacao', this.value)")}</div>
     <div class="trow"><span>Manutenção A</span>${eurIn(numPt(T.extraA), "setTarifa('extraA', this.value)")}</div>
     <div class="trow"><span>Manutenção E</span>${eurIn(numPt(T.extraE), "setTarifa('extraE', this.value)")}</div>
     <div class="hint">Tarifas próprias de um técnico (ex.: Duarte, 40 € + 20 €/h, sem deslocações): abra o técnico na lista acima.</div>
-  </div>
-  <h3>Preços dos materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
+  </div></div>
+  <div><h3>Preços dos materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel mats">
     ${gruposMat().map(g => { const nome = g; const l = matList().filter(m => grupoMat(m) === g); if(!l.length) return "";
       const ps = l.map(m => S.precos[m.codigo]).filter(v => v !== undefined && v !== null);
@@ -728,7 +728,7 @@ function precosPanel(){
       <label class="f" id="m_grp_novo_w" style="margin:8px 0 0;display:none"><span>Nome do novo grupo</span><input id="m_grp_novo" placeholder="Ex.: Canalização"></label>
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn pri sm" onclick="addMat()">Adicionar</button></div>
     </details>
-  </div>`;
+  </div></div></div>`;
 }
 // Grupos dos materiais: campo "grupo" (nome livre). Sem o campo, deduz-se pelo código.
 const GRUPOS_BASE = ["Limpeza", "Placas", "Iluminação"];
