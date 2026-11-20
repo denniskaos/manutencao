@@ -567,15 +567,16 @@ let otOrig = "";
 function viewOrdens(){
   const f = {ativas:o=>o.estado!=="concluida", aberta:o=>o.estado==="aberta", curso:o=>o.estado==="curso", concluida:o=>o.estado==="concluida", todas:()=>true}[otFilter] || (()=>true);
   const tf = !IS_ADMIN || !techF ? () => true : techF === "-" ? o => !o.tecnico : o => o.tecnico === techF;
-  const fo = !IS_ADMIN || !otOrig ? () => true : otOrig === "trab" ? isTrab : o => !isTrab(o);
+  const fo = !IS_ADMIN || !otOrig ? () => true : otOrig === "trab" ? isTrab : otOrig === "entr" ? isEntrega : o => !isTrab(o) && !isEntrega(o);
   const base = otsSorted().filter(f).filter(tf).filter(o => !condoF || condoOf(o) === condoF);
-  const nTrab = base.filter(isTrab).length;
-  const list = otsSorted().filter(f).filter(tf).filter(fo).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
+  const nTrab = base.filter(isTrab).length, nEntrB = base.filter(isEntrega).length;
+  const nEntr = otsSorted().filter(tf).filter(isEntrega).filter(o => !condoF || condoOf(o) === condoF).length;
+  const list = otsSorted().filter(otOrig === "entr" ? () => true : f).filter(tf).filter(fo).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
   return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
-  ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","📋 Ocorrências", base.length - nTrab],["trab","🔧 Trabalhos dos técnicos", nTrab]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
-  <div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>
+  ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","📋 Ocorrências", base.length - nTrab - nEntrB],["trab","🔧 Trabalhos dos técnicos", nTrab],["entr","📦 Entregas", nEntr]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
+  ${otOrig === "entr" ? "" : `<div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>`}
   ${techFilterSel()}${condoFilterSel()}
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
   <div class="${IS_ADMIN ? "pgrp plain" : "list"}" id="lst">${list.length ? (IS_ADMIN ? `<div class="plist">${list.slice(0, listMax).map(o => otRow(o, !!condoF)).join("")}</div>${list.length > listMax ? `<div class="actions" style="justify-content:center;margin:8px 0"><button class="btn" onclick="listMax+=100;renderListOnly()">Mostrar mais (${list.length - listMax} restantes)</button></div>` : ""}` : list.map(o=>otItem(o, !!condoF)).join("")) : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
@@ -1207,6 +1208,7 @@ function genFromPlan(pid){
 function editOt(id, condoId, equipId){
   const o = id ? S.ots[id] : {tipo:"corretiva", prioridade:"media", data: today(), condoId: condoId || condoF || "", equipId: equipId||"", tecnico: IS_ADMIN ? (techF && techF !== "-" ? techF : "") : ME};
   if(id && !canEditOt(o)) return;
+  if(id && isEntrega(o)) return openSaidaDireta(id);
   const cid = condoOf(o);
   openSheet(id ? "Editar ordem" : (IS_ADMIN ? "Nova ordem de trabalho" : "Novo trabalho"), `
     ${IS_ADMIN?"":'<p style="font-size:13px;color:var(--muted);margin-top:0">Para um trabalho feito sem ordem do escritório (manutenção, reparação, avaria encontrada no local). Depois de guardar, acrescente o material, as horas e as fotos e carregue em <b>Concluir</b>. O escritório é avisado.</p>'}
@@ -1352,6 +1354,7 @@ function setExt(id, k, v){
 }
 function openOt(id){
   if(!S.ots[id]) return;
+  if(isEntrega(S.ots[id])) return openEntrega(id);
   readNotifsForOrder(id);
   const draw = () => {
     const o = S.ots[id]; if(!o) return "";
@@ -1405,7 +1408,7 @@ function openOt(id){
         </div></div>`; })() : ""}`}
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px">✅ Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
-      <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn" onclick="printOt('${id}')">🖨️ Imprimir</button>`:""}<span class="sp"></span>
+      <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')">🖨️ Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
       ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')">💾 Guardar e sair</button>` : ""}
       ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">${isExt(o) ? "Resolvida pela empresa" : "Concluir ordem"}</button>`}</div>`;
   };
@@ -1522,8 +1525,61 @@ async function printHtml(html){
   ]);
   try{ window.print(); }catch(_){ toast("Este dispositivo não permite imprimir daqui. Use o computador."); }
 }
+/* ---------- guia de entrega de material ---------- */
+const isEntrega = o => o.soMaterial === true && o.titulo === "Entrega de material";
+const DIA_MS = 24 * 3600 * 1000;
+const entregaAberta = o => !!o.criadaEm && Date.now() - Date.parse(o.criadaEm) < DIA_MS;
+const entregaLimite = o => { const t = new Date(Date.parse(o.criadaEm) + DIA_MS); return fmtDate(iso(t)) + " às " + t.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }); };
+function openEntrega(id){
+  const o = S.ots[id]; if(!o) return;
+  const c = S.condos[condoOf(o)] || {}; const aberta = entregaAberta(o) && IS_ADMIN;
+  openSheet("📦 Entrega nº " + (numOt(o) || "—"), `
+    <div class="panel"><dl class="kv"><dt>Prédio</dt><dd>${esc(c.nome ? cLabel(c) : "—")}</dd><dt>Data</dt><dd>${fmtDate(o.data || o.criada)}</dd>
+      <dt>Levou</dt><dd>${esc(entregaQuem(o))}</dd><dt>Entregou</dt><dd>${esc(nm(o.criadoPor))}</dd></dl></div>
+    <div class="panel"><b>Material</b><div class="parts" style="margin-top:6px">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
+    ${entregaObs(o) ? `<div class="panel" style="white-space:pre-wrap;font-size:14px">${esc(entregaObs(o))}</div>` : ""}
+    ${aberta ? `<div class="note" style="font-size:13px">Se houver algum engano, pode corrigir ou apagar até <b>${esc(entregaLimite(o))}</b>. Depois fica só para consulta.</div>`
+             : `<div class="note" style="font-size:13px">🔒 Registo fechado — passaram mais de 24 horas. Só para consulta e impressão.</div>`}
+    <div class="actions">${aberta ? `<button class="btn danger" onclick="armDelete(this,()=>apagarEntrega('${id}'))">🗑️ Apagar</button><button class="btn" onclick="openSaidaDireta('${id}')">✏️ Corrigir</button>` : ""}<span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+}
+async function apagarEntrega(id){
+  const o = S.ots[id]; if(!o) return;
+  if(!entregaAberta(o)){ toast("Passaram mais de 24 horas — já não é possível apagar."); return; }
+  closeSheet(); await del("ots", id); toast("Entrega apagada — o material voltou ao stock.");
+  if(VE_STOCK()) setTimeout(() => stockChanged(), 1500);
+}
+function entregaQuem(o){ const m = /levantado no escritório por (.+?)\.(\n|$)/.exec(o.descricao || ""); return o.solicitante || (m ? m[1] : ""); }
+function entregaObs(o){ return (o.notas || "").trim(); }
+function guiaPronta(id){
+  const o = S.ots[id]; if(!o) return;
+  openSheet("📦 Entrega registada", `
+    <p style="margin:0 0 10px">Guia nº <b class="mono">${esc(numOt(o) || "—")}</b> · ${esc(cName(condoOf(o)))}<br>Levou: <b>${esc(entregaQuem(o))}</b> · Entregou: <b>${esc(nm(o.criadoPor))}</b></p>
+    <div class="panel"><div class="parts">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
+    <p style="font-size:13px;color:var(--muted)">Imprima agora e peça a quem levou o material para assinar. A guia fica guardada em <b>Ordens → 📦 Entregas</b>, para voltar a consultar ou imprimir.</p>
+    <div class="actions"><button class="btn" onclick="closeSheet()">Fechar</button><span class="sp"></span><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+}
+function guiaHtml(o){
+  const c = S.condos[condoOf(o)] || {}; const pc = o.pecas || [];
+  const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
+  const quem = entregaQuem(o), por = nm(o.criadoPor);
+  const hora = o.criadaEm ? new Date(o.criadaEm).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "";
+  const via = v => `<div class="pr">
+    <div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Guia de Entrega de Material</h1></div></div>
+      <div class="meta">Guia nº <b>${esc(numOt(o) || "—")}</b><br>Data: <b>${fmtDate(o.data || o.criada)}</b>${hora ? " · " + hora : ""}</div></div>
+    <h2>Destino</h2>
+    <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
+    <h2>Entrega</h2>
+    <table class="prkv">${row("Levantado por", quem)}${row("Entregue por", por)}${row("Local", "Escritório / armazém")}</table>
+    <h2>Material</h2>
+    <table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:70px;text-align:right">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td></tr>`).join("")}</table>
+    ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
+    <div class="sig"><div><span>Entregue por<br>${esc(por)}</span></div><div><span>Recebido por<br>${esc(quem)}</span></div></div>
+    <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+  return via("Via do escritório");
+}
 async function printOt(id){
   const o = S.ots[id]; if(!o) return;
+  if(isEntrega(o)){ await printHtml(guiaHtml(o)); return; }
   if((o.fotos||[]).length){ toast("A preparar fotografias…"); try{ await ensureUrls(o.fotos); }catch(_){} }
   await printHtml(reportHtml(o));
 }
@@ -1861,34 +1917,44 @@ async function saveTrabalho(concluir){
 /* ---------- saída direta do armazém para um prédio ---------- */
 // Cria uma ordem concluída "Entrega de material" (só material) atribuída a quem regista;
 // sem carrinha associada, o material sai do armazém principal e entra nos relatórios do prédio.
-function openSaidaDireta(){
-  movLines = [];
-  openSheet("Entrega de material", `
-    ${condoPicker("")}
+function openSaidaDireta(editId){
+  const ed = editId ? S.ots[editId] : null;
+  if(ed && !entregaAberta(ed)){ toast("Passaram mais de 24 horas — esta entrega já só pode ser consultada."); return; }
+  movLines = ed ? (ed.pecas || []).map(p => ({ c: p.c, q: Number(p.q) })) : [];
+  openSheet(ed ? "Corrigir entrega nº " + (numOt(ed) || "") : "Entrega de material", `
+    ${ed ? `<div class="note" style="font-size:13px">Pode corrigir até ${esc(entregaLimite(ed))}. Depois disso fica só para consulta.</div>` : ""}
+    ${condoPicker(ed ? condoOf(ed) : "")}
     <div class="panel"><b>Material</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
       <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}">${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
       <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('saida')"><button class="btn sm" onclick="addMovLine('saida')">Adicionar</button></div></div>
-    <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${today()}"></label>
-    <label class="f"><span>Quem levou *</span><input id="mv_quem" placeholder="Nome de quem levantou o material"></label></div>
-    <label class="f"><span>Observações</span><input id="mv_obs" placeholder="Opcional"></label>
-    ${VE_STOCK() ? `<div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>` : ""}
-    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveSaidaDireta()">Registar saída</button></div>`);
+    <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${ed ? esc(ed.data || today()) : today()}"></label>
+    <label class="f"><span>Quem levou *</span><input id="mv_quem" placeholder="Nome de quem levantou o material" value="${ed ? esc(entregaQuem(ed)) : ""}"></label></div>
+    <label class="f"><span>Observações</span><input id="mv_obs" placeholder="Opcional" value="${ed ? esc((ed.notas || "").replace(/\n?\[Corrigida por[^\]]*\]/g, "").trim()) : ""}"></label>
+    ${VE_STOCK() && !ed ? `<div class="note" style="font-size:13px">Para material levantado no escritório. Sai do <b>armazém principal</b> e fica registada uma ordem concluída de <b>entrega de material</b> neste prédio, que entra nos relatórios e no resumo semanal só com o valor do material (sem horas nem deslocação).</div>` : ""}
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveSaidaDireta(${ed ? `'${esc(editId)}'` : ""})">${ed ? "Guardar correção" : "Registar saída"}</button></div>`);
   drawMovLines();
 }
-async function saveSaidaDireta(){
+async function saveSaidaDireta(editId){
+  const ed = editId ? S.ots[editId] : null;
+  if(editId && (!ed || !entregaAberta(ed))){ toast("Passaram mais de 24 horas — já não é possível corrigir."); closeSheet(); return; }
   const cid = val("f_condo"); if(!cid){ toast("Escolha o prédio."); return; }
   if(val("mv_qtd")) addMovLine("saida");
   if(!movLines.length){ toast("Acrescente pelo menos um artigo."); return; }
   if(!val("mv_quem")){ toast("Indique quem levou o material."); $("#mv_quem").focus(); return; }
   const d = val("mv_data") || today(); const obs = val("mv_obs");
   const pecas = movLines.map(x => ({ c: x.c, n: (S.mat[x.c] || {}).nome || x.c, q: x.q }));
-  const o = { id: newId(), titulo: "Entrega de material", condoId: cid, equipId: "", zona: "", tecnico: ME, tipo: "corretiva", prioridade: "media", estado: "concluida",
-    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + ".\nEntregue por " + nm(ME) + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
+  const quemEntregou = ed ? ed.criadoPor : ME;
+  const o = { id: ed ? ed.id : newId(), titulo: "Entrega de material", condoId: cid, equipId: "", zona: "", tecnico: ME, tipo: "corretiva", prioridade: "media", estado: "concluida",
+    data: d, descricao: "Material levantado no escritório por " + val("mv_quem") + ".\nEntregue por " + nm(quemEntregou) + "." + (obs ? "\n" + obs : ""), solicitante: val("mv_quem"), checklist: [], pecas, fotos: [], notas: obs, tempo: 0,
     deslocacoes: 0, soMaterial: true, criada: today(), criadaEm: nowIso(), criadoPor: ME, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME,
     concluida: d, concluidaEm: nowIso(), concluidoPor: ME };
-  put("ots", o);
-  closeSheet(); toast("Saída registada — " + pecas.map(p => p.q + "× " + p.n).join(", ") + " para " + cName(cid) + ".");
+  if(ed){ Object.assign(o, { numero: ed.numero, tecnico: ed.tecnico, criada: ed.criada, criadaEm: ed.criadaEm, criadoPor: ed.criadoPor, atribuida: ed.atribuida, atribuidaEm: ed.atribuidaEm, atribuidoPor: ed.atribuidoPor });
+    const ant = (ed.notas || "").match(/\[Corrigida por[^\]]*\]/g) || [];
+    o.notas = [obs, ...ant, "[Corrigida por " + nm(ME) + " em " + fmtDate(today()) + " às " + new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) + "]"].filter(Boolean).join("\n"); }
+  closeSheet(); toast(ed ? "A guardar a correção…" : "A registar a entrega…");
+  await put("ots", o);
   if(VE_STOCK()) setTimeout(() => stockChanged(), 1500);
+  guiaPronta(o.id);
 }
 /* ---------- ficha do artigo ---------- */
 function openStockArt(c){
