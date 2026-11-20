@@ -1023,7 +1023,7 @@ function openPessoa(id){
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
-      ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="armDelete(this,()=>setAtivo('${id}',${!x.ativo}))">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
+      ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="${x.ativo ? `openDesativar('${id}')` : `armDelete(this,()=>setAtivo('${id}',true))`}">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
 }
 async function setTarTec(id){
   if(!VE_STOCK()) return;
@@ -1044,6 +1044,43 @@ async function resetPw(id){
   const x = S.equipa[id]; const pw = randPw();
   try{ await callUsers({ acao: "repor", user_id: id, password: pw }); showCredentials(x.nome, x.email, pw, x.telefone); }
   catch(e){ toast(e.message); }
+}
+/* ---------- desativar: passar o que a pessoa tem para outra ---------- */
+function pendentesDe(id){
+  const ots = Object.values(S.ots).filter(o => o.tecnico === id && o.estado !== "concluida");
+  const pls = Object.values(S.plans).filter(p => p.tecnico === id);
+  const zonas = Object.entries(S.zonas || {}).filter(([, t]) => t === id).map(([z]) => z);
+  const cars = VE_STOCK() && S.stk && S.stk.locais ? Object.values(S.stk.locais).filter(l => l.tipo === "carrinha" && l.tecnico === id) : [];
+  return { ots, pls, zonas, cars };
+}
+function openDesativar(id){
+  const x = S.equipa[id]; if(!x) return;
+  const d = pendentesDe(id); const nada = !d.ots.length && !d.pls.length && !d.zonas.length && !d.cars.length;
+  const outros = tecnicos().filter(t => t.id !== id && (x.papel === "admin" || t.papel !== "admin"));
+  openSheet("Desativar " + esc(x.nome), `
+    <p style="margin-top:0">${esc(x.nome)} deixa de conseguir entrar na app. O histórico (ordens feitas, fotos, material, relatórios e assinatura) fica guardado com o nome ${x.papel === "admin" ? "dele/dela" : "do técnico"}.</p>
+    ${nada ? `<div class="panel" style="font-size:14px">Não tem nada pendente para passar a outra pessoa.</div>` : `
+    <div class="panel"><b>Ainda tem:</b><div class="parts" style="margin-top:6px">
+      ${d.ots.length ? `<div class="part"><span class="n">Ordens abertas / em curso</span><span class="mono">${d.ots.length}</span></div>` : ""}
+      ${d.pls.length ? `<div class="part"><span class="n">Rondas / planos preventivos</span><span class="mono">${d.pls.length}</span></div>` : ""}
+      ${d.zonas.length ? `<div class="part"><span class="n">Responsável de zona</span><span>${esc(d.zonas.join(", "))}</span></div>` : ""}
+      ${d.cars.length ? `<div class="part"><span class="n">Carrinha</span><span>${esc(d.cars.map(l => l.nome.replace(/ —.*$/, "")).join(", "))}</span></div>` : ""}
+    </div></div>
+    <label class="f"><span>Passar tudo para</span><select id="dz_para"><option value="">— Deixar por atribuir —</option>${outros.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join("")}</select></label>
+    <div class="hint" style="font-size:12.5px;color:var(--muted);margin:-4px 0 8px">Se deixar por atribuir, as ordens aparecem no Painel em "Por atribuir"${d.zonas.length ? ", a zona fica sem responsável" : ""}${d.cars.length ? " e a carrinha fica sem técnico (o material continua lá)" : ""}.</div>`}
+    <div class="actions"><button class="btn" onclick="openPessoa('${id}')">Cancelar</button><span class="sp"></span><button class="btn pri" style="background:var(--red);border-color:var(--red)" onclick="desativarPassar('${id}')">Desativar${nada ? "" : " e passar"}</button></div>`);
+}
+async function desativarPassar(id){
+  const para = val("dz_para"); const d = pendentesDe(id);
+  closeSheet(); toast("A tratar…");
+  for(const o of d.ots) updOt(o.id, { tecnico: para, atribuida: para ? today() : "", atribuidaEm: para ? nowIso() : "", atribuidoPor: para ? ME : "" }, true);
+  for(const p of d.pls) put("plans", { ...p, tecnico: para }, true);
+  for(const z of d.zonas){ const { error } = para ? await sb.from("zonas_resp").upsert({ zona: z, tecnico: para }) : await sb.from("zonas_resp").delete().eq("zona", z);
+    if(!error){ S.zonas = { ...(S.zonas || {}) }; if(para) S.zonas[z] = para; else delete S.zonas[z]; } }
+  for(const l of d.cars){ const { error } = await sb.from("stock_locais").update({ tecnico: para || null }).eq("id", l.id); if(!error) S.stk.locais[l.id] = { ...S.stk.locais[l.id], tecnico: para || null }; }
+  await setAtivo(id, false);
+  const partes = [d.ots.length && d.ots.length + (d.ots.length === 1 ? " ordem" : " ordens"), d.pls.length && d.pls.length + (d.pls.length === 1 ? " plano" : " planos"), d.zonas.length && "zona " + d.zonas.join(", "), d.cars.length && "carrinha"].filter(Boolean);
+  if(partes.length) setTimeout(() => toast("Conta desativada. " + partes.join(", ") + (para ? " → " + nm(para) : " ficaram por atribuir") + "."), 900);
 }
 async function setAtivo(id, ativo){
   try{ await callUsers({ acao: "ativo", user_id: id, ativo }); S.equipa[id] = { ...S.equipa[id], ativo }; closeSheet(); render(); toast(ativo ? "Conta reativada." : "Conta desativada."); }
@@ -2153,7 +2190,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
