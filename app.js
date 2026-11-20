@@ -885,8 +885,20 @@ function armDelete(btn, fn){
 }
 const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
 const condoOptions = (sel, f) => `<option value="">— Selecione —</option>` + condosSorted().filter(c => c.id === sel || !f || hit([c.codigo,c.nome,c.morada,c.nif].join(" "), f)).map(c => `<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(cLabel(c))}</option>`).join("");
-const condoPicker = (sel, onch) => `<label class="f"><span>Condomínio *</span><input id="f_cq" placeholder="Procurar por código, nome ou morada…" oninput="filterCondoSel(this.value)" style="margin-bottom:6px"><select id="f_condo" ${onch?'onchange="onCondoChange()"':""}>${condoOptions(sel)}</select></label>`;
-function filterCondoSel(v){ const s = $("#f_condo"); if(!s) return; const cur = s.value; s.innerHTML = condoOptions(cur, v); const opts = [...s.options].filter(o => o.value); if(!cur && opts.length === 1){ s.value = opts[0].value; if(s.onchange) s.onchange(); } }
+const condoPicker = (sel, onch) => `<div class="f"><span>Condomínio *</span><input id="f_cq" placeholder="Procurar por código, nome ou morada…" oninput="filterCondoSel(this.value)" autocomplete="off" style="margin-bottom:6px"><div id="f_cres" class="cres"></div><select id="f_condo" ${onch?'onchange="onCondoChange()"':""}>${condoOptions(sel)}</select></div>`;
+function filterCondoSel(v){
+  const s = $("#f_condo"); if(!s) return; const cur = s.value; s.innerHTML = condoOptions(cur, v);
+  const res = $("#f_cres"); const q = (v || "").trim();
+  const found = q ? condosSorted().filter(c => hit([c.codigo, c.nome, c.morada, c.nif].join(" "), q)) : [];
+  if(found.length === 1 && !cur){ escolherCondo(found[0].id); return; }
+  if(res) res.innerHTML = !q ? "" : found.length ? found.slice(0, 8).map(c => `<button type="button" onclick="escolherCondo('${c.id}')"><b class="mono">${esc(c.codigo || "")}</b> ${esc(c.nome)}<small>${esc(c.morada || "")}</small></button>`).join("") + (found.length > 8 ? `<div class="mais">Mais ${found.length - 8} — escreva mais letras para afinar.</div>` : "") : `<div class="mais">Nenhum condomínio encontrado.</div>`;
+}
+function escolherCondo(id){
+  const s = $("#f_condo"); if(!s) return;
+  s.innerHTML = condoOptions(id); s.value = id; if(s.onchange) s.onchange();
+  const res = $("#f_cres"); if(res) res.innerHTML = "";
+  const qi = $("#f_cq"); if(qi) qi.value = "";
+}
 const equipOptions = (condoId, sel) => {
   const list = Object.values(S.equip).filter(e => e.condoId === condoId).sort((a,b)=>a.nome.localeCompare(b.nome, "pt"));
   return `<option value="">${condoId ? "— Nenhum (área comum / geral) —" : "— Escolha primeiro o condomínio —"}</option>` + list.map(e => `<option value="${e.id}" ${e.id===sel?"selected":""}>${esc(e.nome)}${e.local?" — "+esc(e.local):""}</option>`).join("");
@@ -2204,7 +2216,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,

@@ -123,6 +123,12 @@ table.stk tr:hover td{background:#fbf8f2}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.dark{background:var(--head);border-color:var(--head);color:#fff}
 .btn.danger{color:var(--red)}
+.cres:empty{display:none}
+.cres{border:1px solid var(--line);border-radius:12px;background:#fff;margin:0 0 6px;overflow:hidden}
+.cres button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:9px 12px;font:inherit;cursor:pointer;color:var(--ink)}
+.cres button:last-child{border-bottom:0}.cres button:hover{background:#faf7f1}
+.cres button b{color:var(--accent);margin-right:4px}.cres small{display:block;color:var(--muted);font-size:12.5px}
+.cres .mais{padding:8px 12px;font-size:13px;color:var(--muted)}
 .note.wxnote{display:flex;gap:10px;align-items:flex-start;cursor:pointer;background:#e8f0fa;border-color:#c9daf0;color:#1d3b5c}
 /* ícones de traço (máscara: herdam a cor do texto) */
 i[class^="ico-"]{display:inline-block;width:1.15em;height:1.15em;vertical-align:-.2em;margin-right:.32em;background:currentColor;-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat;flex:0 0 auto;font-style:normal}
@@ -200,9 +206,9 @@ details.mnovo summary::-webkit-details-marker{display:none}
 .sheet .top h4{margin:0;font-size:17px}
 .sheet .body{padding:14px 18px}
 .x{border:0;background:#e9e5dd;border-radius:50%;width:38px;height:38px;flex:none;font-size:24px;line-height:1;cursor:pointer;color:var(--ink);display:flex;align-items:center;justify-content:center}
-label.f{display:block;margin-bottom:12px}
-label.f>span{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
-label.f input,label.f select,label.f textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+label.f,div.f{display:block;margin-bottom:12px}
+label.f>span,div.f>span{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
+label.f input,label.f select,label.f textarea,div.f>input,div.f>select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
 label.f textarea{min-height:84px;resize:vertical}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
@@ -281,7 +287,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=77"></script>
-<script type="module" src="app.js?v=77"></script>
+<script src="config.js?v=78"></script>
+<script type="module" src="app.js?v=78"></script>
 </body>
 </html>
