@@ -164,6 +164,7 @@ async function loadAll(uid){
     S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
   try{ const { data: em } = await sb.from("empresa").select("*").maybeSingle(); S.empresa = em || {}; }catch(_){ S.empresa = {}; }
+  try{ const { data: zr, error: ze } = await sb.from("zonas_resp").select("*"); S.zonasOk = !ze; S.zonas = Object.fromEntries((zr || []).map(r => [r.zona, r.tecnico])); }catch(_){ S.zonas = {}; S.zonasOk = false; }
   await loadStock();
   loadMeteo(); setInterval(() => loadMeteo(), 30 * 60 * 1000);
   mode = "ok";
@@ -549,7 +550,7 @@ function viewInicio(){
     return `<h3><i class=ico-wrench></i>Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button></div>`); })()}
   ${porAtribuir.length ? (() => { const g = {}; for(const o of porAtribuir){ const k = isExt(o) ? "Elevadores / empresa externa" : (gecResp(o) || "Sem indicação"); (g[k] ||= []).push(o); }
     window.__grp = {};
-    return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
+    return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + (Object.keys(S.zonas || {}).length ? `<div class="actions" style="margin:-4px 0 8px"><span class="sp"></span><button class="btn sm" onclick="atribuirPorZona()"><i class=ico-worker></i>Atribuir ao responsável de cada zona</button></div>` : "") + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
       const urg = os.filter(o => o.prioridade === "alta").length; const velhas = os.filter(o => o.data && diffDays(t, o.data) > 30).length;
       return grpBlock(key, esc(k), [urg ? `<span class="warnTxt">${urg} urgente${urg===1?"":"s"}</span>` : "", velhas ? `${velhas} com mais de 30 dias` : ""].filter(Boolean).join(" · "), os,
         `<div class="actions" style="margin:6px 0;flex-wrap:nowrap"><span style="font-size:13px;color:var(--muted);white-space:nowrap">Atribuir todas a</span><select onchange="assignMany('${esc(key)}', this.value)" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff">${techOptions("")}</select></div>`); }).join(""); })() : ""}
@@ -651,6 +652,54 @@ function localidade(c){
   for(const parte of partes){ const t = semAcento(parte); if(!t.trim()) continue; for(const [nome, chaves] of LOCALIDADES) if(chaves.some(k => t.includes(semAcento(k)))) return nome; }
   return "Outras";
 }
+/* ---------- responsáveis por zona ---------- */
+const respZona = cid => { const c = S.condos[cid]; const t = c && (S.zonas || {})[localidade(c)]; return t && S.equipa[t] && S.equipa[t].ativo ? t : ""; };
+const zonasLista = () => { const g = {}; for(const c of Object.values(S.condos)){ const z = localidade(c); g[z] = (g[z] || 0) + 1; } return Object.entries(g).sort((a, b) => b[1] - a[1]); };
+const tecsOnly = () => tecnicos().filter(t => t.papel !== "admin");
+function zonasPanel(){
+  if(!IS_ADMIN) return "";
+  const zs = zonasLista(); const def = zs.filter(([z]) => respZona(Object.values(S.condos).find(c => localidade(c) === z)?.id)).length;
+  const key = "zr"; const aberto = grpOpen.has(key);
+  const semTec = !tecsOnly().length;
+  return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="grpToggle('${key}', this.open)"><summary><span class="pg-t"><i class=ico-worker></i>Responsáveis por zona</span><span class="badge">${def}/${zs.length}</span><span class="pg-s">${def ? "Ordens e rondas novas vão para o responsável da zona" : "Ainda sem responsáveis"}</span></summary>
+    <div style="padding:4px 12px 10px">
+      ${!S.zonasOk ? `<div class="note" style="font-size:13px">Falta preparar a base de dados (ficheiro ZONAS).</div>` : ""}
+      ${semTec ? `<div class="note" style="font-size:13px">Ainda não há técnicos registados. Crie as contas em Equipa e depois escolha aqui o responsável de cada zona.</div>` : ""}
+      ${zs.map(([z, n]) => `<div class="trow"><span>${esc(z)} <small>${n} prédios</small></span><select style="max-width:55%;border:1px solid var(--line);border-radius:10px;padding:7px 8px;background:#fff" onchange="setZonaResp(${esc(JSON.stringify(z))}, this.value)" ${semTec || !S.zonasOk ? "disabled" : ""}><option value="">— Ninguém —</option>${tecsOnly().map(t => `<option value="${t.id}" ${(S.zonas || {})[z] === t.id ? "selected" : ""}>${esc(t.nome)}</option>`).join("")}</select></div>`).join("")}
+      <div class="hint">Uma ocorrência ou ronda nova num prédio da zona fica logo atribuída ao responsável (pode sempre mudar à mão).</div>
+    </div></details>`;
+}
+async function setZonaResp(z, tec){
+  if(!IS_ADMIN) return;
+  const antes = (S.zonas || {})[z] || "";
+  const { error } = tec ? await sb.from("zonas_resp").upsert({ zona: z, tecnico: tec }) : await sb.from("zonas_resp").delete().eq("zona", z);
+  if(error){ writeErr(error); render(); return; }
+  S.zonas = { ...(S.zonas || {}) }; if(tec) S.zonas[z] = tec; else delete S.zonas[z];
+  render();
+  if(!tec){ toast(z + " ficou sem responsável."); return; }
+  const naZona = cid => { const c = S.condos[cid]; return c && localidade(c) === z; };
+  const elegivel = t => !t || t === antes;
+  const ots = Object.values(S.ots).filter(o => o.estado !== "concluida" && !isExt(o) && !isEntrega(o) && naZona(condoOf(o)) && elegivel(o.tecnico) && o.tecnico !== tec);
+  const pls = Object.values(S.plans).filter(p => naZona(condoOf(p)) && elegivel(p.tecnico) && p.tecnico !== tec);
+  if(!ots.length && !pls.length){ toast(nm(tec) + " é agora o responsável de " + z + "."); return; }
+  window.__zmov = { tec, ots: ots.map(o => o.id), pls: pls.map(p => p.id) };
+  openSheet("Responsável de " + esc(z), `<p style="margin-top:0"><b>${esc(nm(tec))}</b> é agora o responsável de ${esc(z)}.</p>
+    <p>Quer passar-lhe também o que já existe nesta zona${antes ? ` (que estava com ${esc(nm(antes))} ou sem ninguém)` : " e ainda não tem ninguém"}?</p>
+    <div class="panel"><div class="parts"><div class="part"><span class="n">Ordens abertas</span><span class="mono">${ots.length}</span></div><div class="part"><span class="n">Rondas / planos preventivos</span><span class="mono">${pls.length}</span></div></div></div>
+    <div class="actions"><button class="btn" onclick="closeSheet()">Não, só as novas</button><span class="sp"></span><button class="btn pri" onclick="passarZona()">Sim, passar tudo</button></div>`);
+}
+function passarZona(){
+  const m = window.__zmov; if(!m) return; closeSheet();
+  for(const id of m.ots) updOt(id, { tecnico: m.tec, atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME }, true);
+  for(const id of m.pls){ const p = S.plans[id]; if(p) put("plans", { ...p, tecnico: m.tec }, true); }
+  render(); const pl = (n, a, b) => n + " " + (n === 1 ? a : b); toast(pl(m.ots.length, "ordem", "ordens") + " e " + pl(m.pls.length, "plano", "planos") + " passaram para " + nm(m.tec) + ".");
+}
+function atribuirPorZona(){
+  const ots = Object.values(S.ots).filter(o => !o.tecnico && o.estado !== "concluida" && !isExt(o) && respZona(condoOf(o)));
+  if(!ots.length){ toast("Não há ordens por atribuir em zonas com responsável."); return; }
+  for(const o of ots) updOt(o.id, { tecnico: respZona(condoOf(o)), atribuida: today(), atribuidaEm: nowIso(), atribuidoPor: ME }, true);
+  render(); toast(ots.length === 1 ? "1 ordem atribuída ao responsável da zona." : ots.length + " ordens atribuídas ao responsável da zona.");
+}
 function viewCondos(){
   const mine = myOts();
   const pendOf = {}; for(const o of mine) if(o.estado !== "concluida"){ const c = condoOf(o); pendOf[c] = (pendOf[c] || 0) + 1; }
@@ -669,10 +718,11 @@ function viewCondos(){
     for(const k in g) g[k].sort((a, b) => nomeOrd(a).localeCompare(nomeOrd(b), "pt", { numeric: true }));
     body = Object.entries(g).sort((a, b) => a[0] === "Outras" ? 1 : b[0] === "Outras" ? -1 : b[1].length - a[1].length).map(([z, cs]) => { const key = "cz:" + z; const aberto = grpOpen.has(key); const np = cs.reduce((a, c) => a + (pendOf[c.id] ? 1 : 0), 0);
       const cods = [...new Set(cs.map(zona))].join(", ");
-      return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${esc(z)} <span class="mono" style="color:var(--muted);font-weight:400;font-size:12px">${esc(cods)}</span></span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
+      return `<details class="pgrp cz" ${aberto ? "open" : ""} ontoggle="grpToggle('${esc(key)}', this.open)"><summary><span class="pg-t">${esc(z)} <span class="mono" style="color:var(--muted);font-weight:400;font-size:12px">${esc(cods)}</span>${IS_ADMIN && (S.zonas || {})[z] ? ` <span style="font-weight:500;font-size:12.5px;color:var(--blue)"><i class=ico-worker></i>${esc(nm(S.zonas[z]))}</span>` : ""}</span><span class="badge">${cs.length}</span>${np ? `<span class="badge b-amber" title="Prédios com ordens pendentes">${np} c/ pendentes</span>` : ""}</summary>${aberto ? `<div class="plist">${cs.map(row).join("")}</div>` : ""}</details>`; }).join("");
   }
   return `<h2>Condomínios <span class="mono" style="font-size:14px;color:var(--muted);margin-right:auto;margin-left:8px">${Object.keys(S.condos).length}</span>${IS_ADMIN?'<button class="btn pri sm" onclick="editCondo()">+ Novo</button>':""}</h2>
   <div class="chips"><button class="chip ${!condoPend?"on":""}" onclick="condoPend=false;render()">Todos</button><button class="chip ${condoPend?"on":""}" onclick="condoPend=true;render()">Com ordens pendentes <span class="mono" style="opacity:.7">${nPend}</span></button></div>
+  ${zonasPanel()}
   <input class="search" placeholder="Procurar por código, nome, morada ou NIF…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
   <div id="lst" class="${!q && list.length > 15 ? "czgrid" : ""}">${body}</div>`;
 }
@@ -844,7 +894,9 @@ const equipOptions = (condoId, sel) => {
 const pessoasAgrupadas = sel => { const opt = t => `<option value="${t.id}" ${t.id===sel?"selected":""}>${esc(t.nome)}</option>`; const tec = tecnicos().filter(t => t.papel !== "admin"), adm = tecnicos().filter(t => t.papel === "admin");
   return (tec.length ? `<optgroup label="Técnicos">${tec.map(opt).join("")}</optgroup>` : "") + (adm.length ? `<optgroup label="Administrativos">${adm.map(opt).join("")}</optgroup>` : ""); };
 const techOptions = sel => `<option value="">— Por atribuir —</option>` + pessoasAgrupadas(sel) + (sel && !(S.equipa[sel] && S.equipa[sel].ativo) ? `<option value="${esc(sel)}" selected>${esc(nm(sel))}</option>` : "");
-function onCondoChange(){ const s = $("#f_eq"); if(s) s.innerHTML = equipOptions(val("f_condo"), ""); }
+function onCondoChange(){ const s = $("#f_eq"); if(s) s.innerHTML = equipOptions(val("f_condo"), "");
+  const t = $("#f_tec"); const r = respZona(val("f_condo"));
+  if(t && r && (!t.value || t.dataset.auto === "1")){ t.value = r; t.dataset.auto = "1"; const h = $("#f_tec_h"); if(h) h.textContent = "Responsável da zona " + localidade(S.condos[val("f_condo")]) + "."; } }
 
 /* ---------- perfil próprio ---------- */
 function openPerfil(){
@@ -1055,7 +1107,7 @@ const ultimaCopia = () => { try{ return localStorage.getItem("ultimaCopia") || "
 async function backupCompleto(btn){
   if(!IS_ADMIN) return;
   if(btn){ btn.disabled = true; btn.textContent = "A preparar…"; }
-  const tabelas = ["condominios", "condominos", "equipamentos", "planos", "ordens", "materiais", "materiais_precos", "tarifas", "tarifas_tecnico", "empresa", "perfis", ...(VE_STOCK() ? ["stock_locais", "stock_artigos", "stock_mov"] : [])];
+  const tabelas = ["condominios", "condominos", "equipamentos", "planos", "ordens", "materiais", "materiais_precos", "tarifas", "tarifas_tecnico", "empresa", "zonas_resp", "perfis", ...(VE_STOCK() ? ["stock_locais", "stock_artigos", "stock_mov"] : [])];
   const out = { app: "Manutenção", versao: 1, exportado_em: nowIso(), exportado_por: nm(ME), tabelas: {} }; const falhas = [];
   for(const t of tabelas){
     const rows = []; let from = 0;
@@ -1258,7 +1310,7 @@ function editPlan(id, condoId, equipId){
     ${condoPicker(cid, true)}
     <div class="grid2"><label class="f"><span>Equipamento (opcional)</span><select id="f_eq">${equipOptions(cid, p.equipId)}</select></label>
     <label class="f"><span>Zona</span><input id="f_zona" value="${esc(p.zona)}" placeholder="Ex.: Garagem, cobertura"></label></div>
-    <label class="f"><span>Técnico responsável</span><select id="f_tec">${techOptions(p.tecnico)}</select></label>
+    <label class="f"><span>Técnico responsável</span><select id="f_tec" onchange="this.dataset.auto='0'">${techOptions(p.tecnico || (!id ? respZona(cid) : ""))}</select><small id="f_tec_h" style="color:var(--muted)"></small></label>
     <div class="grid2"><label class="f"><span>Periodicidade</span><select id="f_per" onchange="document.getElementById('f_perc').parentElement.style.display=this.value==='x'?'block':'none'">${PERIODOS.map(([d,l])=>`<option value="${d}" ${d==p.periodo?"selected":""}>${l}</option>`).join("")}<option value="x" ${custom?"selected":""}>Outra…</option></select></label>
     <label class="f" style="display:${custom?"block":"none"}"><span>A cada (dias)</span><input id="f_perc" type="number" min="1" value="${custom?esc(p.periodo):""}"></label></div>
     <div class="grid2"><label class="f"><span>${last?"Última execução":"Primeira execução"}</span><input type="date" id="f_data" value="${esc(last||p.inicio)}"></label><span></span></div>
@@ -1272,7 +1324,7 @@ function savePlan(id){
   let periodo = val("f_per"); if(periodo === "x") periodo = val("f_perc");
   periodo = Math.max(1, parseInt(periodo) || 30);
   const prev = id ? S.plans[id] : null; const d = val("f_data") || today();
-  const p = {...(prev||{}), id: id || newId(), titulo, condoId, equipId, zona: val("f_zona"), tecnico: val("f_tec"), periodo, checklist: val("f_ck").split("\n").map(s=>s.trim()).filter(Boolean)};
+  const p = {...(prev||{}), id: id || newId(), titulo, condoId, equipId, zona: val("f_zona"), tecnico: val("f_tec") || (!prev ? respZona(condoId) : ""), periodo, checklist: val("f_ck").split("\n").map(s=>s.trim()).filter(Boolean)};
   if(prev && lastExec(prev)){ p.ultima = d; } else { p.inicio = d; p.ultima = ""; }
   put("plans", p); toast("Plano guardado."); openPlan(p.id);
 }
@@ -1315,7 +1367,7 @@ function editOt(id, condoId, equipId){
     ${condoPicker(cid, true)}
     <div class="grid2"><label class="f"><span>Equipamento (opcional)</span><select id="f_eq">${equipOptions(cid, o.equipId)}</select></label>
     <label class="f"><span>Zona / fração</span><input id="f_zona" value="${esc(o.zona)}" placeholder="Ex.: Hall do 3º esq., garagem -1"></label></div>
-    ${IS_ADMIN?`<label class="f"><span>Atribuir a</span><select id="f_tec">${techOptions(o.tecnico)}</select></label>`:""}
+    ${IS_ADMIN?`<label class="f"><span>Atribuir a</span><select id="f_tec" onchange="this.dataset.auto='0'">${techOptions(o.tecnico || (!id ? respZona(cid) : ""))}</select><small id="f_tec_h" style="color:var(--muted)">${!id && !o.tecnico && respZona(cid) ? "Responsável da zona " + esc(localidade(S.condos[cid])) + "." : ""}</small></label>`:""}
     <div class="grid2"><label class="f"><span>Tipo</span><select id="f_tipo">${Object.entries(TIPOS_OT).map(([k,l])=>`<option value="${k}" ${o.tipo===k?"selected":""}>${l}</option>`).join("")}</select></label>
     <label class="f"><span>Prioridade</span><select id="f_pri">${Object.entries(PRIOR).map(([k,v])=>`<option value="${k}" ${k===o.prioridade?"selected":""}>${v[0]}</option>`).join("")}</select></label></div>
     <div class="grid2"><label class="f"><span>Data prevista</span><input type="date" id="f_data" value="${esc(o.data)}"></label>
@@ -1331,7 +1383,7 @@ function saveOt(id){
   const prev = id ? S.ots[id] : null;
   const old = new Map((prev && prev.checklist || []).map(c => [c.t, c.ok]));
   const checklist = val("f_ck").split("\n").map(s=>s.trim()).filter(Boolean).map(t => ({t, ok: !!old.get(t)}));
-  const tecnico = IS_ADMIN ? val("f_tec") : (prev ? prev.tecnico : ME);
+  const tecnico = IS_ADMIN ? (val("f_tec") || (!prev ? respZona(condoId) : "")) : (prev ? prev.tecnico : ME);
   const o = {...(prev || {estado:"aberta", pecas:[], fotos:[], notas:"", tempo:0, criada: today(), criadaEm: nowIso(), criadoPor: ME}), id: id || newId(), titulo, condoId, equipId, tecnico, zona: val("f_zona"), tipo: val("f_tipo"), prioridade: val("f_pri"), data: val("f_data"), solicitante: val("f_sol"), descricao: val("f_desc"), checklist};
   if(tecnico && (!prev || prev.tecnico !== tecnico)){ o.atribuida = today(); o.atribuidaEm = nowIso(); o.atribuidoPor = ME; }
   put("ots", o);
@@ -2101,7 +2153,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
