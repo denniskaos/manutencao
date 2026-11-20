@@ -47,7 +47,7 @@ header{background:var(--head);color:#fff;padding:calc(14px + env(safe-area-inset
 header .row{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:860px;margin:0 auto}
 header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:9px}
 header h1 .dot{width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block}
-header h1 .hlogo{width:30px;height:30px;border-radius:8px;box-shadow:0 0 0 1px #3a474f;flex:0 0 auto;display:block}
+header h1 .hlogo{width:26px;height:26px;flex:0 0 auto;display:block}
 .sync{font-size:12px;color:#b8c2c8}
 /* Montagem de app: barra de cima e menu de baixo parados; só o meio desliza. */
 html,body{height:100%}
@@ -217,12 +217,12 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 
 </head>
 <body>
-<header><div class="row"><h1><img class="hlogo" src="icon-192.png" alt="">Manutenção</h1><span style="display:flex;align-items:center;gap:8px"><span class="sync" id="sync"></span><span id="who" style="display:flex;align-items:center;gap:6px;font-size:13px"></span></span></div></header>
+<header><div class="row"><h1><svg class="hlogo" viewBox="0 0 24 24" fill="none" stroke="#e8892b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 8h3M8 12h3"/><path d="M8.5 16.5l2.5-2.5"/><circle cx="12" cy="13" r="1.6"/></svg>Manutenção</h1><span style="display:flex;align-items:center;gap:8px"><span class="sync" id="sync"></span><span id="who" style="display:flex;align-items:center;gap:6px;font-size:13px"></span></span></div></header>
 <main id="app"><div class="empty">A carregar…</div></main>
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=63"></script>
-<script type="module" src="app.js?v=63"></script>
+<script src="config.js?v=65"></script>
+<script type="module" src="app.js?v=65"></script>
 </body>
 </html>

@@ -162,6 +162,7 @@ async function loadAll(uid){
     const { data: tt } = await sb.from("tarifas_tecnico").select("*");
     S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
+  try{ const { data: em } = await sb.from("empresa").select("*").maybeSingle(); S.empresa = em || {}; }catch(_){ S.empresa = {}; }
   await loadStock();
   loadMeteo(); setInterval(() => loadMeteo(), 30 * 60 * 1000);
   mode = "ok";
@@ -691,6 +692,7 @@ function viewEquipa(){
     <label class="f" style="margin:0"><span>Manutenção A (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraA).replace(".", ",")}" onchange="setTarifa('extraA', this.value)"></label>
     <label class="f" style="margin:0"><span>Manutenção E (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraE).replace(".", ",")}" onchange="setTarifa('extraE', this.value)"></label>
   </div><div style="font-size:13px;color:var(--muted);margin-top:8px">Tarifas próprias de um técnico (ex.: 1.ª hora mais cara): abra o técnico na lista acima.</div></div>
+  ${empresaPanel()}
   <h3>Materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
     <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
@@ -706,6 +708,39 @@ function viewEquipa(){
 
 const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v") || ""; }catch(_){ return ""; } })();
 const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
+const prLogo = () => (S.empresa || {}).logo ? `<img src="${esc(S.empresa.logo)}" alt="">` : "";
+const prMarca = () => { const e = S.empresa || {}; return e.nome ? " · " + esc(e.nome) + (e.subtitulo ? " — " + esc(e.subtitulo) : "") : ""; };
+function empresaPanel(){
+  const e = S.empresa || {};
+  return `<h3>Empresa nas impressões</h3>
+  <div class="panel">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Nome e logótipo que aparecem no topo e no rodapé dos relatórios, guias e resumos. Ficam guardados nos dados, não no programa — pode mudar ou apagar quando quiser.</div>
+    <div class="grid2"><label class="f" style="margin:0"><span>Nome</span><input id="em_nome" value="${esc(e.nome || "")}" placeholder="Ex.: Nome da empresa"></label>
+    <label class="f" style="margin:0"><span>Frase (opcional)</span><input id="em_sub" value="${esc(e.subtitulo || "")}" placeholder="Ex.: Gestão de condomínios"></label></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap">
+      ${e.logo ? `<img src="${esc(e.logo)}" alt="" style="height:44px;max-width:200px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px">` : `<span style="font-size:13px;color:var(--muted)">Sem logótipo</span>`}
+      <label class="btn sm" style="cursor:pointer">${e.logo ? "Trocar logótipo" : "Escolher logótipo"}<input type="file" accept="image/*" style="display:none" onchange="empresaLogo(this)"></label>
+      ${e.logo ? `<button class="btn sm danger" onclick="empresaGuardar({logo:''})">Tirar logótipo</button>` : ""}
+      <span class="sp" style="flex:1"></span><button class="btn pri sm" onclick="empresaTexto()">Guardar</button>
+    </div>
+  </div>`;
+}
+function empresaTexto(){ empresaGuardar({ nome: val("em_nome"), subtitulo: val("em_sub") }); }
+async function empresaGuardar(campos){
+  const novo = { id: 1, nome: "", subtitulo: "", logo: "", ...S.empresa, ...campos }; delete novo.created_at;
+  const { error } = await sb.from("empresa").upsert(novo);
+  if(error){ if(/empresa/.test(error.message || "")) toast("Falta preparar a base de dados (ficheiro 07_empresa.sql)."); else writeErr(error); return; }
+  S.empresa = novo; render(); toast("Guardado.");
+}
+function empresaLogo(inp){
+  const f = inp.files && inp.files[0]; if(!f) return;
+  const img = new Image(); const url = URL.createObjectURL(f);
+  img.onload = () => { const h = Math.min(240, img.height); const w = Math.round(img.width * h / img.height);
+    const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+    empresaGuardar({ logo: c.toDataURL("image/png") }); };
+  img.onerror = () => toast("Não foi possível ler a imagem.");
+  img.src = url;
+}
 function render(){
   renderNav(); renderWho();
   { const nv = document.getElementById("navver"); if(nv && VERSAO) nv.textContent = "Versão " + VERSAO; }
@@ -961,8 +996,8 @@ const ultimaCopia = () => { try{ return localStorage.getItem("ultimaCopia") || "
 async function backupCompleto(btn){
   if(!IS_ADMIN) return;
   if(btn){ btn.disabled = true; btn.textContent = "A preparar…"; }
-  const tabelas = ["condominios", "condominos", "equipamentos", "planos", "ordens", "materiais", "materiais_precos", "tarifas", "tarifas_tecnico", "perfis", ...(VE_STOCK() ? ["stock_locais", "stock_artigos", "stock_mov"] : [])];
-  const out = { app: "Manutenção FLAT Condomínios", versao: 1, exportado_em: nowIso(), exportado_por: nm(ME), tabelas: {} }; const falhas = [];
+  const tabelas = ["condominios", "condominos", "equipamentos", "planos", "ordens", "materiais", "materiais_precos", "tarifas", "tarifas_tecnico", "empresa", "perfis", ...(VE_STOCK() ? ["stock_locais", "stock_artigos", "stock_mov"] : [])];
+  const out = { app: "Manutenção", versao: 1, exportado_em: nowIso(), exportado_por: nm(ME), tabelas: {} }; const falhas = [];
   for(const t of tabelas){
     const rows = []; let from = 0;
     try{ for(;;){ const { data, error } = await sb.from(t).select("*").range(from, from + 999); if(error) throw error; rows.push(...data); if(data.length < 1000) break; from += 1000; } out.tabelas[t] = rows; }
@@ -1473,7 +1508,7 @@ function extReportHtml(o, withPhotos){
   const dias = o.contactada && o.concluida ? diasEntre(o.contactada, o.concluida) : null;
   const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura;
   return `<div class="pr">
-    <div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Ficha de Acompanhamento de Avaria</h1><div>${esc(o.titulo)}</div></div></div>
+    <div class="hd"><div class="lg">${prLogo()}<div><h1>Ficha de Acompanhamento de Avaria</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${o.estado === "concluida" ? "Resolvida" : esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Resolvida: ${fmtDate(o.concluida)}`:""}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}</table>
@@ -1486,7 +1521,7 @@ function extReportHtml(o, withPhotos){
     <h2>Ponto de situação / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     <div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>O Responsável${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</span></div><div><span>A Empresa / O Condomínio<br>&nbsp;</span></div></div>
-    <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+    <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
 }
 function reportHtml(o, withPhotos = true){
   if(isExt(o)) return extReportHtml(o, withPhotos);
@@ -1496,7 +1531,7 @@ function reportHtml(o, withPhotos = true){
   const ck = o.checklist || [], pc = o.pecas || [];
   const tempo = o.tempo ? `${Math.floor(o.tempo/60)} h ${o.tempo%60} min` : "";
   return `<div class="pr">
-    <div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
+    <div class="hd"><div class="lg">${prLogo()}<div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}${row("Administração", c.admin)}</table>
@@ -1517,7 +1552,7 @@ function reportHtml(o, withPhotos = true){
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
     ${(() => { const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura; return `<div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</span></div><div><span>O Responsável do Condomínio<br>&nbsp;</span></div></div>`; })()}
-    <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+    <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
 }
 async function printHtml(html){
   let pa = document.getElementById("printArea");
@@ -1578,7 +1613,7 @@ function guiaHtml(o){
   const quem = entregaQuem(o), por = nm(o.criadoPor);
   const hora = o.criadaEm ? new Date(o.criadaEm).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "";
   const via = v => `<div class="pr">
-    <div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Guia de Entrega de Material</h1></div></div>
+    <div class="hd"><div class="lg">${prLogo()}<div><h1>Guia de Entrega de Material</h1></div></div>
       <div class="meta">Guia nº <b>${esc(numOt(o) || "—")}</b><br>Data: <b>${fmtDate(o.data || o.criada)}</b>${hora ? " · " + hora : ""}</div></div>
     <h2>Destino</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
@@ -1588,7 +1623,7 @@ function guiaHtml(o){
     <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
     <div class="sig"><div><span>Entregue por<br>${esc(por)}</span></div></div>
-    <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+    <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
   return via("Via do escritório");
 }
 async function printOt(id){
@@ -1656,11 +1691,11 @@ async function doBatchPrint(){
         ${condoRows}
         <tr><th colspan="2" style="text-align:right">Total ${esc(nm(t))}</th><th>${hrs(sum.min)}</th><th style="text-align:center">${sum.nd}</th><th>${matsTxt(aggMats(os)) || "—"}</th><th style="text-align:right">${eur(sum.mo)}</th><th style="text-align:right">${eur(sum.desl)}</th><th style="text-align:right">${sum.ex ? eur(sum.ex) : "—"}</th><th style="text-align:right">${eur(sum.mat)}</th><th style="text-align:right">${eur(sum.tot)}</th></tr></table>`;
     }).join("");
-    parts.push(`<div class="pr sumpage"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
+    parts.push(`<div class="pr sumpage"><div class="hd"><div class="lg">${prLogo()}<div><h1>Resumo de intervenções</h1><div>${fmtDate(de)} a ${fmtDate(ate)}</div></div></div>
       <div class="meta">${list.length} ${list.length===1?"ordem concluída":"ordens concluídas"} · ${Math.floor(gMin/60)}h${pad(gMin%60)} · ${gDesl} desl.<br>Total: <b>${eur(grand)}</b></div></div>
       ${secs}
       <table style="margin-top:14px"><tr><th style="text-align:right">Total geral</th><th style="width:110px;text-align:right">${eur(grand)}</th></tr></table>
-      <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`);
+      <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`);
   }
   if(withRep) for(const o of list) parts.push(reportHtml(o, withPh));
   btn.disabled = false; btn.textContent = "🖨️ Imprimir";
@@ -1700,11 +1735,11 @@ async function doPendPrint(){
     const semApp = os.filter(o => !o.tecnico).length;
     const rows = os.map(o => { const d = o.data || o.criada; const z = whereTxt(o); const g = gecNum(o);
       return `<tr><td>${esc(numOt(o))}</td><td>${fmtDate(d)}</td><td style="text-align:center">${diasDesde(d)}</td><td>${esc(cName(condoOf(o)))}</td><td>${o.prioridade==="alta"?"<b>⚠ </b>":""}${esc(o.titulo)}${z && z !== "—" ? `<br><span style="color:#555">${esc(z)}</span>` : ""}${isExt(o) ? `<br><span style="color:#555">Empresa: ${esc(o.empresa || (S.equip[o.equipId]||{}).empresa || "por contactar")}${o.contactada ? " · contactada " + fmtDate(o.contactada) : ""}</span>` : ""}</td><td>${o.estado==="curso"?"Em curso":"Aberta"}</td><td>${esc(g || "—")}</td><td style="width:60px"></td></tr>`; }).join("");
-    return `<div class="pr"><div class="hd"><div class="lg"><img src="logo.png" alt="FLAT Condomínios"><div><h1>Ordens por fechar</h1><div><b>${esc(t)}</b></div></div></div>
+    return `<div class="pr"><div class="hd"><div class="lg">${prLogo()}<div><h1>Ordens por fechar</h1><div><b>${esc(t)}</b></div></div></div>
       <div class="meta">${os.length} ${os.length===1?"ordem":"ordens"}${curso?` · ${curso} em curso`:""}${urg?`<br><b>${urg} urgente${urg===1?"":"s"}</b>`:""}<br>Situação a ${fmtDate(today())}</div></div>
       ${semApp ? `<div style="font-size:9pt;color:#555;margin:0 0 6px">${semApp===os.length?"Ainda não atribuídas na app — responsável segundo o Gecond.":`${semApp} ainda não atribuída${semApp===1?"":"s"} na app (responsável segundo o Gecond).`}</div>` : ""}
       <table class="sm"><tr><th style="width:40px">Nº</th><th style="width:64px">Data</th><th style="width:36px;text-align:center">Dias</th><th style="width:auto">Condomínio</th><th style="width:auto">Trabalho</th><th style="width:52px">Estado</th><th style="width:44px">Gecond</th><th style="width:60px">Feito / obs.</th></tr>${rows}</table>
-      <div class="ft">Impresso em ${fmtDate(today())} · FLAT Condomínios — Gestão e Administração de Condomínios</div></div>`;
+      <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
   });
   await printHtml(pages.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
 }
@@ -2007,7 +2042,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
