@@ -691,7 +691,7 @@ function viewEquipa(){
     <label class="f" style="margin:0"><span>Manutenção A (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraA).replace(".", ",")}" onchange="setTarifa('extraA', this.value)"></label>
     <label class="f" style="margin:0"><span>Manutenção E (€)</span><input inputmode="decimal" value="${String(S.tarifas.extraE).replace(".", ",")}" onchange="setTarifa('extraE', this.value)"></label>
   </div><div style="font-size:13px;color:var(--muted);margin-top:8px">Tarifas próprias de um técnico (ex.: 1.ª hora mais cara): abra o técnico na lista acima.</div></div>
-  <h3>Materiais do armazém <span class="mono" style="font-weight:500">${matList().length}</span></h3>
+  <h3>Materiais <span class="mono" style="font-weight:500">${matList().length}</span></h3>
   <div class="panel">
     <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Preço unitário de cada material (só os administrativos veem). Usado na impressão das ordens.</div>
     <div class="parts">${matList().map(m => `<div class="part"><span class="n">${esc(m.nome)} <span class="mono" style="color:var(--muted);font-size:12px">${esc(m.codigo)}</span></span><input inputmode="decimal" value="${S.precos[m.codigo] !== undefined ? String(S.precos[m.codigo]).replace(".", ",") : ""}" placeholder="0,00" onchange="setPreco('${esc(m.codigo)}', this.value)" style="width:84px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff"> €<button class="btn sm" onclick="rmMat('${esc(m.codigo)}')" aria-label="Retirar">✕</button></div>`).join("") || '<span style="color:var(--muted)">Sem materiais.</span>'}</div>
@@ -1392,7 +1392,7 @@ function openOt(id){
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>`}
       ${isExt(o) ? "" : `<div class="panel"><b>Peças / materiais usados</b>
         <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
-        ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material do armazém —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
+        ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div></div>
       <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
       ${!("extra" in o) ? "" : `<div class="panel"><b>Manutenção extra</b>
@@ -1550,13 +1550,13 @@ function confirmarApagarEntrega(id){
   openSheet("Apagar entrega nº " + (numOt(o) || ""), `
     <p style="margin-top:0">Vai apagar a entrega de <b>${esc(entregaQuem(o))}</b> para <b>${esc(cName(condoOf(o)))}</b>:</p>
     <div class="panel"><div class="parts">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
-    <p style="font-size:13px;color:var(--muted)">O material volta ao stock. Isto não se pode desfazer.</p>
+    <p style="font-size:13px;color:var(--muted)">${VE_STOCK() ? "O material volta ao stock. " : ""}Isto não se pode desfazer.</p>
     <div class="actions"><button class="btn" onclick="openEntrega('${id}')">Não, voltar</button><span class="sp"></span><button class="btn pri" style="background:var(--red);border-color:var(--red)" onclick="apagarEntrega('${id}')">Sim, apagar</button></div>`);
 }
 async function apagarEntrega(id){
   const o = S.ots[id]; if(!o) return;
   if(!entregaAberta(o)){ toast("Passaram mais de 24 horas — já não é possível apagar."); return; }
-  closeSheet(); await del("ots", id); toast("Entrega apagada — o material voltou ao stock.");
+  closeSheet(); await del("ots", id); toast(VE_STOCK() ? "Entrega apagada — o material voltou ao stock." : "Entrega apagada.");
   if(VE_STOCK()) setTimeout(() => stockChanged(), 1500);
 }
 function entregaQuem(o){ const m = /levantado no escritório por (.+?)\.(\n|$)/.exec(o.descricao || ""); return o.solicitante || (m ? m[1] : ""); }
@@ -1580,7 +1580,7 @@ function guiaHtml(o){
     <h2>Destino</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
     <h2>Entrega</h2>
-    <table class="prkv">${row("Levantado por", quem)}${row("Entregue por", por)}${row("Local", "Escritório / armazém")}</table>
+    <table class="prkv">${row("Levantado por", quem)}${row("Entregue por", por)}${row("Local", "Escritório")}</table>
     <h2>Material</h2>
     <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
