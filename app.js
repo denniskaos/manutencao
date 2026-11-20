@@ -335,7 +335,7 @@ function valores(o){
   const so = o.soMaterial === true;
   const tt = S.tarTec[o.tecnico]; const min = Number(o.tempo) || 0;
   const mo = so ? 0 : tt ? r2(min > 0 ? tt.hora1 + Math.max(0, min - 60) / 60 * tt.hora : 0) : r2(horas * S.tarifas.hora);
-  const nd = so ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
+  const nd = so || tt ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
   const ex = so ? 0 : r2(extraVal(o.extra));
   return { mat, mo, nd, desl, so, ex, exTipo: so ? "" : (o.extra || ""), tt, total: r2(mat + mo + desl + ex) };
 }
@@ -371,6 +371,8 @@ const waBtn = (tel, text, label) => `<a class="btn wa" href="${esc(waLink(tel, t
 /* ---------- navegação ---------- */
 let tab = "inicio", otFilter = "ativas", condoF = "", techF = "", q = "";
 const ICONS = {
+  apagar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+  editar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   inicio:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   ordens:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
   prev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>',
@@ -1402,7 +1404,7 @@ function openOt(id){
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
           ${v.so ? `<div class="part"><span class="n" style="color:var(--muted)">Só entrega de material — sem deslocação nem mão de obra</span></div>` : `<div class="part"><span class="n">Mão de obra <span style="color:var(--muted);font-size:13px">${moTxt(o, v)}</span></span><span class="mono">${eur(v.mo)}</span></div>
-          <div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>`}
+          ${v.tt ? `<div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">incluída na tarifa do técnico</span></span><span class="mono">${eur(0)}</span></div>` : `<div class="part"><span class="n">Deslocação <span style="color:var(--muted);font-size:13px">× ${eur(S.tarifas.deslocacao)}</span></span><input type="number" min="0" step="1" value="${v.nd}" onchange="setDesloc('${id}', this.value)" style="width:56px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:70px;text-align:right">${eur(v.desl)}</span></div>`}`}
           ${v.ex ? `<div class="part"><span class="n">${EXTRAS[v.exTipo]}</span><span class="mono">${eur(v.ex)}</span></div>` : ""}
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
@@ -1446,7 +1448,7 @@ function reportText(id){
   if(o.soMaterial === true) L.push("", "Só entrega de material.");
   if(o.extra && o.soMaterial !== true) L.push("", "Manutenção extra: " + EXTRAS[o.extra]);
   if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
-  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
+  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), (v.tt ? "Deslocação: incluída na tarifa do técnico" : "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl)), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
   return L.join("\n");
@@ -1507,7 +1509,7 @@ function reportHtml(o, withPhotos = true){
     ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
       <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
       ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${moTxt(o, v)}</td><td style="text-align:right">${eur(v.mo)}</td></tr>
-      <tr><td>Deslocação — ${v.nd} × ${eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>${v.ex ? `<tr><td>${EXTRAS[v.exTipo]}</td><td style="text-align:right">${eur(v.ex)}</td></tr>` : ""}`}
+      <tr><td>Deslocação — ${v.tt ? "incluída na tarifa do técnico" : v.nd + " × " + eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>${v.ex ? `<tr><td>${EXTRAS[v.exTipo]}</td><td style="text-align:right">${eur(v.ex)}</td></tr>` : ""}`}
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
@@ -1540,7 +1542,16 @@ function openEntrega(id){
     ${entregaObs(o) ? `<div class="panel" style="white-space:pre-wrap;font-size:14px">${esc(entregaObs(o))}</div>` : ""}
     ${aberta ? `<div class="note" style="font-size:13px">Se houver algum engano, pode corrigir ou apagar até <b>${esc(entregaLimite(o))}</b>. Depois fica só para consulta.</div>`
              : `<div class="note" style="font-size:13px">🔒 Registo fechado — passaram mais de 24 horas. Só para consulta e impressão.</div>`}
-    <div class="actions">${aberta ? `<button class="btn danger" onclick="armDelete(this,()=>apagarEntrega('${id}'))">🗑️ Apagar</button><button class="btn" onclick="openSaidaDireta('${id}')">✏️ Corrigir</button>` : ""}<span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+    <div class="actions">${aberta ? `<button class="btn danger ico" onclick="confirmarApagarEntrega('${id}')">${ICONS.apagar}Apagar</button><button class="btn ico" onclick="openSaidaDireta('${id}')">${ICONS.editar}Corrigir</button>` : ""}<span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+}
+function confirmarApagarEntrega(id){
+  const o = S.ots[id]; if(!o) return;
+  if(!entregaAberta(o)){ toast("Passaram mais de 24 horas — já não é possível apagar."); return; }
+  openSheet("Apagar entrega nº " + (numOt(o) || ""), `
+    <p style="margin-top:0">Vai apagar a entrega de <b>${esc(entregaQuem(o))}</b> para <b>${esc(cName(condoOf(o)))}</b>:</p>
+    <div class="panel"><div class="parts">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
+    <p style="font-size:13px;color:var(--muted)">O material volta ao stock. Isto não se pode desfazer.</p>
+    <div class="actions"><button class="btn" onclick="openEntrega('${id}')">Não, voltar</button><span class="sp"></span><button class="btn pri" style="background:var(--red);border-color:var(--red)" onclick="apagarEntrega('${id}')">Sim, apagar</button></div>`);
 }
 async function apagarEntrega(id){
   const o = S.ots[id]; if(!o) return;
@@ -1993,7 +2004,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
