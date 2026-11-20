@@ -63,6 +63,21 @@ nav button{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 @media(max-width:380px){nav .in.many button{font-size:9.6px !important;letter-spacing:-.2px !important}}
 nav .in.many button{font-size:10.5px;padding-left:1px;padding-right:1px;letter-spacing:-.1px}
 nav button.on svg{color:var(--accent)}
+/* Computador: menu numa barra à esquerda */
+@media(min-width:1100px){
+  :root{--maxw:1240px}
+  body{display:grid;grid-template-columns:200px 1fr;grid-template-rows:auto 1fr}
+  header{grid-column:1 / -1}
+  header .row{max-width:none}
+  nav{grid-column:1;grid-row:2;flex-direction:column;justify-content:space-between;align-items:stretch;border-top:0;border-right:1px solid var(--line);padding:14px 10px 10px !important;overflow-y:auto}
+  nav .in{flex-direction:column;gap:2px;max-width:none}
+  nav button,nav .in.many button{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;padding:11px 14px !important;font-size:14.5px !important;letter-spacing:0 !important;border-radius:10px;text-align:left}
+  nav button:hover{background:#f6f3ec}
+  nav button.on{background:#fbefe2;color:var(--ink)}
+  nav button svg{width:21px;height:21px;flex:0 0 auto}
+  .navver{align-self:center;padding-top:10px}
+  main{grid-column:2;grid-row:2;padding:20px max(24px, calc((100% - var(--maxw)) / 2)) 32px}
+}
 h2{font-size:20px;margin:4px 0 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 h2 > span{flex-wrap:wrap}
 h3{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:22px 0 8px;font-weight:600}
@@ -287,7 +302,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=78"></script>
-<script type="module" src="app.js?v=78"></script>
+<script src="config.js?v=79"></script>
+<script type="module" src="app.js?v=79"></script>
 </body>
 </html>
