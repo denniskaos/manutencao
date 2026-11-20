@@ -704,15 +704,17 @@ function viewEquipa(){
   <div class="actions" style="margin-top:10px"><button class="btn pri" onclick="backupCompleto(this)">💾 Fazer cópia de segurança</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
 }
 
+const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v") || ""; }catch(_){ return ""; } })();
+const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
 function render(){
   renderNav(); renderWho();
-  if(mode === "login"){ $("#app").innerHTML = viewLogin(); return; }
+  if(mode === "login"){ $("#app").innerHTML = viewLogin() + versaoHtml(); return; }
   if(mode !== "ok"){ $("#app").innerHTML = viewEstado(); return; }
   if(!IS_ADMIN && (tab === "prev" || tab === "equipa")) tab = "inicio";
   if(tab === "stock" && !VE_STOCK()) tab = "inicio";
   const v = {inicio:viewInicio, ordens:viewOrdens, prev:viewPrev, condos:viewCondos, equipa:viewEquipa, stock:viewStock}[tab];
   const active = document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.classList.contains("search");
-  $("#app").innerHTML = v();
+  $("#app").innerHTML = v() + versaoHtml();
   if(active){ const s = $("input.search"); if(s){ s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
   if(sheetRefresh) sheetRefresh();
 }
