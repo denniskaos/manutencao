@@ -193,7 +193,7 @@ function subscribeRealtime(){
   ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${ME}` }, p => {
     const n = fromRow(p.new); S.notifs.unshift(n);
     if(sheetRefresh && document.visibilityState === "visible" && $("#sheet .top h4") && S.ots[n.ordemId] && $("#sheet .top h4").textContent.endsWith(S.ots[n.ordemId].titulo)) setTimeout(() => readNotifsForOrder(n.ordemId), 500);
-    toast("🔔 " + n.titulo + ": " + n.corpo);
+    toast(n.titulo + ": " + n.corpo);
     try{ navigator.vibrate && navigator.vibrate([150,80,150]); }catch(e){}
     render();
   });
@@ -275,7 +275,7 @@ let installEvt = null;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if(mode === "ok") render(); });
 window.addEventListener("appinstalled", () => { installEvt = null; toast("Aplicação instalada."); });
 async function instalarApp(){ if(!installEvt){ openSheet("Instalar no Android", `<ol style="line-height:1.7;padding-left:20px;margin-top:0"><li>Abra esta página no <b>Chrome</b>.</li><li>Toque nos <b>três pontos</b> (⋮) em cima à direita.</li><li>Escolha <b>Instalar aplicação</b> (ou <b>Adicionar ao ecrã principal</b>).</li></ol><p>Depois abra a <b>Manutenção</b> pelo ícone no ecrã principal.</p>`); return; } installEvt.prompt(); try{ await installEvt.userChoice; }catch(e){} installEvt = null; render(); }
-const installBanner = () => (!isIOS && !isStandalone && installEvt) ? `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Instale a aplicação no telemóvel para a abrir como as outras e receber notificações.</span><button class="btn sm pri" onclick="instalarApp()">📲 Instalar</button></div>` : "";
+const installBanner = () => (!isIOS && !isStandalone && installEvt) ? `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Instale a aplicação no telemóvel para a abrir como as outras e receber notificações.</span><button class="btn sm pri" onclick="instalarApp()"><i class=ico-install></i>Instalar</button></div>` : "";
 const pushBanner = () => {
   if(pushOn !== false) return "";
   if(typeof Notification !== "undefined" && Notification.permission === "denied") return `<div class="note">As notificações estão bloqueadas neste telemóvel. Ative-as nas definições do telemóvel (Notificações → Manutenção / navegador).</div>`;
@@ -360,7 +360,7 @@ function splitTels(t){
   return [...new Set(out)].filter(x => x.replace(/\D/g, "").length >= 6);
 }
 const fmtTel = n => /^\d{9}$/.test(n) ? n.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3") : n;
-const telBtns = t => { const ns = splitTels(t); return ns.map(n => `<a class="btn sm" href="tel:${esc(n)}">📞 ${esc(fmtTel(n))}</a>${waNum(n).length >= 11 && /^(\+?351)?9/.test(n.replace(/^00/, "+")) ? `<a class="btn sm wa" href="https://wa.me/${waNum(n)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`).join(""); };
+const telBtns = t => { const ns = splitTels(t); return ns.map(n => `<a class="btn sm" href="tel:${esc(n)}"><i class=ico-phone></i>${esc(fmtTel(n))}</a>${waNum(n).length >= 11 && /^(\+?351)?9/.test(n.replace(/^00/, "+")) ? `<a class="btn sm wa" href="https://wa.me/${waNum(n)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}`).join(""); };
 function waNum(t){ let d = String(t||"").replace(/\D/g, ""); if(d.startsWith("00")) d = d.slice(2); if(d.length === 9) d = "351" + d; return d; }
 const waLink = (tel, text) => `https://wa.me/${waNum(tel)}?text=${encodeURIComponent(text)}`;
 function waOrdem(o){
@@ -368,7 +368,7 @@ function waOrdem(o){
   return [`🔧 Nova ordem de trabalho ${numLabel(o)}`, `*${o.titulo}*`, c.nome ? cLabel(c) : "", c.morada || "", whereTxt(o), `Prioridade: ${(PRIOR[o.prioridade]||PRIOR.media)[0]} · Prevista: ${fmtDate(o.data)}`, o.descricao ? "\n" + o.descricao : "", `\nAbrir: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n");
 }
 function waConcl(o){ return [`✅ Ordem ${numLabel(o)} concluída`, `*${o.titulo}*`, cName(condoOf(o)), o.notas ? "\n" + o.notas : "", `\nVer: ${APP_URL}?ordem=${o.id}`].filter(Boolean).join("\n"); }
-const waBtn = (tel, text, label) => `<a class="btn wa" href="${esc(waLink(tel, text))}" target="_blank" rel="noopener">📲 ${esc(label)}</a>`;
+const waBtn = (tel, text, label) => `<a class="btn wa" href="${esc(waLink(tel, text))}" target="_blank" rel="noopener"><i class=ico-mobile></i>${esc(label)}</a>`;
 
 /* ---------- navegação ---------- */
 let tab = "inicio", otFilter = "ativas", condoF = "", techF = "", q = "";
@@ -432,7 +432,7 @@ function openMeteo(){
   const draw = () => {
     if(!meteo) return `<div id="wxSheet">${emptyBox("A carregar a previsão…")}</div>`;
     const t = today(); const am = addDays(t, 1); const a = meteo.agora;
-    const ondeTxt = meteoPos ? `📍 Pela sua localização${meteo.km != null ? ` (estação de previsão a ~${meteo.km} km)` : ""}` : meteoNegado ? "📍 A localização não está autorizada — a mostrar o Porto. Para usar a sua zona, autorize a localização para esta app nas definições do telemóvel." : "📍 Sem localização — a mostrar o Porto.";
+    const ondeTxt = meteoPos ? `<i class=ico-pin></i>Pela sua localização${meteo.km != null ? ` (estação de previsão a ~${meteo.km} km)` : ""}` : meteoNegado ? "<i class=ico-pin></i>A localização não está autorizada — a mostrar o Porto. Para usar a sua zona, autorize a localização para esta app nas definições do telemóvel." : "<i class=ico-pin></i>Sem localização — a mostrar o Porto.";
     return `<div id="wxSheet">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><span style="font-size:44px;line-height:1">${WX[a ? a.tipo : meteoHoje().tipo] || "🌡️"}</span><div><div style="font-size:22px;font-weight:700">${esc(meteo.local)}${a ? ` · ${Math.round(a.temp)}°` : ""}</div><div style="color:var(--muted);font-size:14px">${esc(a ? a.desc : meteoHoje().desc)}${a && a.prob >= 0 ? ` · 💧 ${Math.round(a.prob)}%` : ""}</div></div></div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${ondeTxt} <button class="btn sm" onclick="loadMeteo(true)" style="margin-left:4px">Atualizar</button></div>
@@ -449,7 +449,7 @@ function renderWho(){
   const nu = S.notifs.filter(n => !n.lida).length;
   document.title = (nu ? "(" + nu + ") " : "") + "Manutenção";
   try{ if(navigator.setAppBadge) nu ? navigator.setAppBadge(nu) : navigator.clearAppBadge(); }catch(e){}
-  el.innerHTML = `${meteoChip()}<button class="bell" onclick="openNotifs()" aria-label="Notificações">🔔${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer"><span class="lg-only">${IS_ADMIN?"Administrativo":"Técnico"}</span><span class="sm-only">${IS_ADMIN?"Admin.":"Técnico"}</span></span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)">👤</button>`;
+  el.innerHTML = `${meteoChip()}<button class="bell" onclick="openNotifs()" aria-label="Notificações"><i class=ico-bell></i>${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer"><span class="lg-only">${IS_ADMIN?"Administrativo":"Técnico"}</span><span class="sm-only">${IS_ADMIN?"Admin.":"Técnico"}</span></span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)"><i class=ico-user></i></button>`;
   el.querySelector(".who-n").textContent = (S.equipa[ME] || {}).nome || "";
 }
 
@@ -458,8 +458,8 @@ function otRow(o, hideCondo){
   const late = o.estado !== "concluida" && o.data && o.data < today();
   const est = o.estado === "concluida" ? '<span class="badge b-green">Concluída</span>' : o.estado === "curso" ? '<span class="badge b-blue">Em curso</span>' : "";
   const sub = [hideCondo ? "" : cName(condoOf(o)), IS_ADMIN ? (o.tecnico ? nm(o.tecnico) : (gecResp(o) ? "Gecond: " + gecResp(o) : "Por atribuir")) : ""].filter(Boolean).join(" · ");
-  const pr = o.prioridade === "alta" ? '<b style="color:var(--red)">⚠ </b>' : "";
-  return `<div class="prow" onclick="openOt('${o.id}')"><span class="mono pd">${esc(numOt(o) || "")}</span><span class="pn">${pr}${isTrab(o) ? "🔧 " : ""}${esc(o.titulo)}${isExt(o) ? " 🛗" : ""}<small>${esc(sub)}</small></span>${est}<span class="badge ${late ? "b-red" : ""}" style="white-space:nowrap">${o.estado==="concluida" ? fmtDate(o.concluida) : fmtDate(o.data)}</span></div>`;
+  const pr = o.prioridade === "alta" ? '<b style="color:var(--red)"><i class=ico-alert></i></b>' : "";
+  return `<div class="prow" onclick="openOt('${o.id}')"><span class="mono pd">${esc(numOt(o) || "")}</span><span class="pn">${pr}${isTrab(o) ? "<i class=ico-wrench></i>" : ""}${esc(o.titulo)}${isExt(o) ? " <i class=ico-lift></i>" : ""}<small>${esc(sub)}</small></span>${est}<span class="badge ${late ? "b-red" : ""}" style="white-space:nowrap">${o.estado==="concluida" ? fmtDate(o.concluida) : fmtDate(o.data)}</span></div>`;
 }
 let grpOpen = new Set(), listMax = 50;
 function grpBlock(key, label, sub, items, extra){
@@ -479,11 +479,11 @@ function otItem(o, hideCondo){
   const ck = o.checklist || []; const done = ck.filter(c => c.ok).length;
   const est = o.estado === "concluida" ? '<span class="badge b-green">Concluída</span>' : o.estado === "curso" ? '<span class="badge b-blue">Em curso</span>' : '<span class="badge">Aberta</span>';
   const sub = [hideCondo ? "" : cName(condoOf(o)), whereTxt(o)].filter(Boolean).join(" · ");
-  const who = IS_ADMIN ? `<div class="s">👷 <span class="${o.tecnico?"":"warnTxt"}">${esc(nm(o.tecnico))}</span></div>` : "";
+  const who = IS_ADMIN ? `<div class="s"><i class=ico-worker></i><span class="${o.tecnico?"":"warnTxt"}">${esc(nm(o.tecnico))}</span></div>` : "";
   const nf = (o.fotos||[]).length;
   return `<div class="item" onclick="openOt('${o.id}')"><div class="bar ${o.estado==="concluida"?"green":p[2]}"></div>
     <div class="main"><div class="t">${numOt(o)?`<span class="mono" style="color:var(--muted);font-weight:500;margin-right:6px">${numOt(o)}</span>`:""}${esc(o.titulo)}</div><div class="s">${esc(sub)}</div>${who}
-    ${ck.length||nf?`<div class="s mono">${ck.length?`${done}/${ck.length} verificações`:""}${ck.length&&nf?" · ":""}${nf?`📷 ${nf}`:""}</div>`:""}</div>
+    ${ck.length||nf?`<div class="s mono">${ck.length?`${done}/${ck.length} verificações`:""}${ck.length&&nf?" · ":""}${nf?`<i class=ico-camera></i>${nf}`:""}</div>`:""}</div>
     <div class="r">${est}<span class="${late?"badge b-red":""}">${o.estado==="concluida"?fmtDate(o.concluida):fmtDate(o.data)}</span>${o.tipo==="preventiva"?'<span class="badge">Preventiva</span>':o.tipo==="pedido"?'<span class="badge">Pedido</span>':""}</div></div>`;
 }
 function planItem(p, hideCondo){
@@ -491,7 +491,7 @@ function planItem(p, hideCondo){
   const sub = [hideCondo ? "" : cName(condoOf(p)), whereTxt(p), perLabel(p)].filter(Boolean).join(" · ");
   return `<div class="item" onclick="openPlan('${p.id}')"><div class="bar ${st[2]}"></div>
     <div class="main"><div class="t">${esc(p.titulo)}</div><div class="s">${esc(sub)}</div>
-    <div class="s">Próxima: <span class="mono">${fmtDate(planNext(p))}</span>${p.tecnico?" · 👷 "+esc(nm(p.tecnico)):""}${open?" · ordem já criada":""}</div></div>
+    <div class="s">Próxima: <span class="mono">${fmtDate(planNext(p))}</span>${p.tecnico?" · <i class=ico-worker></i>"+esc(nm(p.tecnico)):""}${open?" · ordem já criada":""}</div></div>
     <div class="r"><span class="badge ${st[1]}">${st[0]}</span></div></div>`;
 }
 const emptyBox = (msg, btn) => `<div class="empty">${msg}${btn?`<br>${btn}`:""}</div>`;
@@ -525,7 +525,7 @@ function viewInicio(){
       ${statCard(mes, "Concluídas este mês", "otFilter='concluida';go('ordens')")}
     </div>
     <h3>Para hoje e em atraso</h3>
-    <div class="list">${hoje.length ? hoje.map(o=>otItem(o)).join("") : emptyBox("Não tem ordens para hoje. 👍")}</div>
+    <div class="list">${hoje.length ? hoje.map(o=>otItem(o)).join("") : emptyBox("Não tem ordens para hoje.")}</div>
     ${prox.length?`<h3>Próximas</h3><div class="list">${prox.slice(0,10).map(o=>otItem(o)).join("")}</div>`:""}
     <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="openTrabalho()">+ Novo trabalho</button></div>
     <p style="font-size:13px;color:var(--muted);margin-top:6px">Fez um trabalho num prédio? Registe-o aqui com o material, as horas e as fotos.</p>`;
@@ -537,7 +537,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}
+  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -546,7 +546,7 @@ function viewInicio(){
   </div>
   ${(() => { const desde = addDays(t, -7); const tr = Object.values(S.ots).filter(o => isTrab(o) && o.estado === "concluida" && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
     if(!tr.length) return ""; window.__grp = window.__grp || {};
-    return `<h3>🔧 Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button></div>`); })()}
+    return `<h3><i class=ico-wrench></i>Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button></div>`); })()}
   ${porAtribuir.length ? (() => { const g = {}; for(const o of porAtribuir){ const k = isExt(o) ? "Elevadores / empresa externa" : (gecResp(o) || "Sem indicação"); (g[k] ||= []).push(o); }
     window.__grp = {};
     return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
@@ -561,8 +561,8 @@ function viewInicio(){
       return `<div class="item" onclick="techF='${x.id}';otFilter='ativas';go('ordens')"><div class="bar ${lt?"red":pend.length?"amber":"green"}"></div><div class="main"><div class="t">${esc(x.nome)}</div><div class="s">${pend.length} pendente${pend.length===1?"":"s"} · ${curso} em curso</div></div><div class="r">${lt?`<span class="badge b-red">${lt} em atraso</span>`:""}</div></div>`;
     }).join("")}</div>` : emptyBox("Ainda não há técnicos. Crie as contas no separador <b>Equipa</b>.", `<button class="btn pri" onclick="go('equipa')">Ir para Equipa</button>`)}
   ${late.length ? `<h3>Em atraso</h3>` + (() => { const g = {}; for(const o of late) (g[nm(o.tecnico)] ||= []).push(o); return Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => grpBlock("at:" + k, esc(k), "", os)).join(""); })() : ""}
-  ${due.length?`<h3>Preventivas a lançar</h3><div class="list">${due.map(p => `<div class="item"><div class="bar ${planStatus(p)[2]}"></div><div class="main" onclick="openPlan('${p.id}')"><div class="t">${esc(p.titulo)}</div><div class="s">${esc(cName(condoOf(p)))} · ${fmtDate(planNext(p))}${p.tecnico?" · 👷 "+esc(nm(p.tecnico)):""}</div></div><div class="r"><button class="btn sm pri" onclick="genFromPlan('${p.id}')">Criar ordem</button></div></div>`).join("")}</div>`:""}
-  <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button><button class="btn" onclick="openBatchPrint()">🖨️ Imprimir relatórios da semana</button></div>`;
+  ${due.length?`<h3>Preventivas a lançar</h3><div class="list">${due.map(p => `<div class="item"><div class="bar ${planStatus(p)[2]}"></div><div class="main" onclick="openPlan('${p.id}')"><div class="t">${esc(p.titulo)}</div><div class="s">${esc(cName(condoOf(p)))} · ${fmtDate(planNext(p))}${p.tecnico?" · <i class=ico-worker></i>"+esc(nm(p.tecnico)):""}</div></div><div class="r"><button class="btn sm pri" onclick="genFromPlan('${p.id}')">Criar ordem</button></div></div>`).join("")}</div>`:""}
+  <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="editOt()">+ Nova ordem de trabalho</button><button class="btn" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir relatórios da semana</button></div>`;
 }
 
 // Trabalho registado por um técnico no local (não veio do escritório nem do Gecond).
@@ -578,8 +578,8 @@ function viewOrdens(){
   const list = otsSorted().filter(otOrig === "entr" ? () => true : f).filter(tf).filter(fo).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()">📦 Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()">🖨️ Por fechar</button><button class="btn sm" onclick="openBatchPrint()">🖨️ Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
-  ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","📋 Ocorrências", base.length - nTrab - nEntrB],["trab","🔧 Trabalhos dos técnicos", nTrab],["entr","📦 Entregas", nEntr]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()"><i class=ico-print></i>Por fechar</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
+  ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","<i class=ico-clip></i>Ocorrências", base.length - nTrab - nEntrB],["trab","<i class=ico-wrench></i>Trabalhos dos técnicos", nTrab],["entr","<i class=ico-box></i>Entregas", nEntr]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
   ${otOrig === "entr" ? "" : `<div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>`}
   <div class="frow">${techFilterSel()}${condoFilterSel()}</div>
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
@@ -615,7 +615,7 @@ function viewPrev(){
     return `<details class="pgrp" ${aberto ? "open" : ""} ontoggle="prevToggle('${k}', this.open)"><summary><span class="pg-t ${k === "atraso" ? "warnTxt" : ""}">${label}</span><span class="badge">${ps.length}</span><span class="pg-s">${Object.entries(porTec).map(([n, c]) => `${esc(n)} ${c}`).join(" · ")}</span></summary>
       ${semOrdem.length ? `<div class="actions" style="margin:6px 0"><span style="font-size:13px;color:var(--muted)">${semOrdem.length} sem ordem criada</span><span class="sp"></span><button class="btn sm" onclick="event.stopPropagation();genPlans('${k}')">Criar ${semOrdem.length} ${semOrdem.length === 1 ? "ordem" : "ordens"}</button></div>` : ""}
       <div class="plist">${ps.map(p => { const st = planStatus(p); const o = openOtForPlan(p.id); return `<div class="prow" onclick="openPlan('${p.id}')"><span class="mono pd">${fmtCurto(planNext(p))}</span><span class="pn">${esc(cName(condoOf(p)))}<small>${esc(p.titulo)}${p.tecnico ? " · " + esc(nm(p.tecnico)) : ""}</small></span>${o ? `<span class="badge b-blue">Ordem ${esc(numOt(o) || "")}</span>` : `<span class="badge ${st[1]}">${st[0]}</span>`}</div>`; }).join("")}</div></details>`;
-  }).join("") : emptyBox(Object.keys(S.plans).length ? (prevF === "semana" || prevF === "atraso" ? "Nada para esta semana. 👍" : "Nenhum plano com estes filtros.") + (prevF ? ` <button class="btn sm" onclick="prevF='';render()">Ver todas</button>` : "") : "Crie planos periódicos — ex.: ronda mensal às áreas comuns — com um técnico responsável.", Object.keys(S.plans).length ? "" : '<button class="btn pri" onclick="editPlan()">+ Criar plano</button>')}</div>`;
+  }).join("") : emptyBox(Object.keys(S.plans).length ? (prevF === "semana" || prevF === "atraso" ? "Nada para esta semana." : "Nenhum plano com estes filtros.") + (prevF ? ` <button class="btn sm" onclick="prevF='';render()">Ver todas</button>` : "") : "Crie planos periódicos — ex.: ronda mensal às áreas comuns — com um técnico responsável.", Object.keys(S.plans).length ? "" : '<button class="btn pri" onclick="editPlan()">+ Criar plano</button>')}</div>`;
 }
 function prevToggle(k, open){ if(!prevOpen) prevOpen = new Set(); if(open) prevOpen.add(k); else prevOpen.delete(k); }
 function genPlans(k){
@@ -684,7 +684,7 @@ function viewEquipa(){
     const mine = ots.filter(o => o.tecnico === x.id);
     const pend = mine.filter(o => o.estado !== "concluida").length;
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
-    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s">📱 ${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · ✍️ ${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
+    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
   ${VE_STOCK() ? precosPanel() : ""}
   ${VE_STOCK() ? empresaPanel() : ""}
@@ -692,7 +692,7 @@ function viewEquipa(){
   <div class="panel" style="font-size:14px">O plano gratuito do Supabase <b>não faz cópias de segurança</b>. Faça uma cópia <b>uma vez por semana</b> e guarde o ficheiro fora do computador (pen, Google Drive, OneDrive ou e-mail para si próprio). Se um dia for preciso, os dados repõem-se a partir deste ficheiro.
     <div style="margin-top:8px;color:var(--muted)">Última cópia neste aparelho: <b>${ultimaCopia() ? fmtDate(ultimaCopia()) : "nunca"}</b> · Fotografias: ${Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0)} (cerca de ${Math.round(Object.values(S.ots).reduce((a, o) => a + (o.fotos || []).length, 0) * 0.18)} MB de 1 000 MB gratuitos)</div>
     <div style="margin-top:6px;color:var(--muted)">O Supabase suspende projetos gratuitos sem uso durante uma semana — em férias, abra a app pelo menos uma vez por semana.</div>
-  <div class="actions" style="margin-top:10px"><button class="btn pri" onclick="backupCompleto(this)">💾 Fazer cópia de segurança</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
+  <div class="actions" style="margin-top:10px"><button class="btn pri" onclick="backupCompleto(this)"><i class=ico-save></i>Fazer cópia de segurança</button><button class="btn" onclick="exportCSV()">Exportar ordens (Excel/CSV)</button></div></div>`;
 }
 
 const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v") || ""; }catch(_){ return ""; } })();
@@ -854,7 +854,7 @@ function openPerfil(){
     <label class="f"><span>Telemóvel (WhatsApp)</span><input id="p_tel" type="tel" inputmode="tel" value="${esc(me.telefone)}" placeholder="9xx xxx xxx"></label>
     <div class="actions"><span class="sp"></span><button class="btn pri" onclick="savePerfil()">Guardar</button></div>
     <h3>Notificações</h3>
-    <div class="panel" style="font-size:14px">${pushOn ? "✅ Ativas neste telemóvel." : `Desativadas neste telemóvel. <button class="btn sm pri" onclick="enablePush()">Ativar</button>`}</div>
+    <div class="panel" style="font-size:14px">${pushOn ? "<i class=ico-check></i>Ativas neste telemóvel." : `Desativadas neste telemóvel. <button class="btn sm pri" onclick="enablePush()">Ativar</button>`}</div>
     <h3>Assinatura</h3>
     <div class="panel">
       <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Assine com o dedo (ou com o rato) dentro do quadro. A assinatura é colocada nos relatórios impressos das suas ordens.</div>
@@ -1066,7 +1066,7 @@ async function backupCompleto(btn){
   out.fotos = { quantidade: nf, nota: "As fotografias ficam no Supabase Storage (pasta 'fotos'); este ficheiro guarda só os caminhos." };
   download(`copia-seguranca-manutencao-${today()}.json`, JSON.stringify(out), "application/json");
   try{ localStorage.setItem("ultimaCopia", today()); }catch(e){}
-  if(btn){ btn.disabled = false; btn.textContent = "💾 Fazer cópia de segurança"; }
+  if(btn){ btn.disabled = false; btn.innerHTML = "<i class=ico-save></i>Fazer cópia de segurança"; }
   toast(falhas.length ? "Cópia feita, mas sem: " + falhas.join(", ") : "Cópia de segurança guardada (" + Object.values(out.tabelas).reduce((a, r) => a + r.length, 0) + " registos).");
   render();
 }
@@ -1074,7 +1074,7 @@ function copiaBanner(){
   if(!IS_ADMIN) return "";
   const u = ultimaCopia(); const dias = u ? diffDays(today(), u) : null;
   if(dias !== null && dias < 7) return "";
-  return `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between">${u ? `A última cópia de segurança foi há ${dias} dias.` : "Ainda não fez nenhuma cópia de segurança neste aparelho."} <button class="btn sm" onclick="backupCompleto(this)">💾 Fazer agora</button></div>`;
+  return `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between">${u ? `A última cópia de segurança foi há ${dias} dias.` : "Ainda não fez nenhuma cópia de segurança neste aparelho."} <button class="btn sm" onclick="backupCompleto(this)"><i class=ico-save></i>Fazer agora</button></div>`;
 }
 function exportJSON(){
   const data = { exportado_em: nowIso(), condominios: Object.values(S.condos), equipamentos: Object.values(S.equip), planos: Object.values(S.plans), ordens: Object.values(S.ots), equipa: Object.values(S.equipa).map(({id,nome,email,telefone,papel,ativo}) => ({id,nome,email,telefone,papel,ativo})) };
@@ -1152,7 +1152,7 @@ function openCondo(id, startSub){
       <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" ${IS_ADMIN?`onclick="editCdm('${x.id}')"`:""} style="cursor:${IS_ADMIN?"pointer":"default"}"><div class="bar"></div><div class="main">
         <div class="t">${x.fracao?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(x.fracao)}</span>`:""}${esc(x.nome)}</div>
         ${x.telefone && !splitTels(x.telefone).length ? `<div class="s mono">${esc(x.telefone)}</div>` : ""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
-        <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone ? telBtns(x.telefone) : ""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}">✉️ E-mail</a>`:""}</div>
+        <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone ? telBtns(x.telefone) : ""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}"><i class=ico-mail></i>E-mail</a>`:""}</div>
       </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados." + (IS_ADMIN ? "" : " Peça ao escritório para os acrescentar."))}</div>
       ${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`:""}`;
     }
@@ -1440,8 +1440,8 @@ function extPanel(o, id, can){
       <input id="x_emp2" value="${esc(outra ? cur : "")}" placeholder="Nome da empresa" ${can ? "" : "disabled"} onchange="setExt('${id}','empresa',this.value)" style="${outra?"":"display:none;"}width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">`; })()}</label>
     <div class="grid2"><label class="f" style="margin:0"><span>Contactada em</span>${inp("contactada", o.contactada, 'id="x_cont" type="date"')}</label>
     <label class="f" style="margin:0"><span>Nº / referência do pedido</span>${inp("refExterna", o.refExterna, 'id="x_ref" placeholder="Opcional"')}</label></div>
-    ${can && !o.contactada ? `<button class="btn sm" style="margin-top:8px" onclick="setExt('${id}','contactada','${today()}')">📞 Contactei hoje</button>` : ""}
-    ${o.concluida ? `<div style="margin-top:8px;font-size:14px">✅ Resolvida pela empresa em <b>${fmtDate(o.concluida)}</b>${dias !== null ? ` · ${dias} ${dias === 1 ? "dia" : "dias"} após o contacto` : ""}</div>` : ""}</div>`;
+    ${can && !o.contactada ? `<button class="btn sm" style="margin-top:8px" onclick="setExt('${id}','contactada','${today()}')"><i class=ico-phone></i>Contactei hoje</button>` : ""}
+    ${o.concluida ? `<div style="margin-top:8px;font-size:14px"><i class=ico-check></i>Resolvida pela empresa em <b>${fmtDate(o.concluida)}</b>${dias !== null ? ` · ${dias} ${dias === 1 ? "dia" : "dias"} após o contacto` : ""}</div>` : ""}</div>`;
 }
 const diasEntre = (a, b) => Math.max(0, Math.round((new Date(String(b).slice(0,10)) - new Date(String(a).slice(0,10))) / 864e5));
 function setExt(id, k, v){
@@ -1470,7 +1470,7 @@ function openOt(id){
       ${IS_ADMIN?`<div class="panel"><label class="f" style="margin:0"><span>${isExt(o) ? "Responsável" : "Atribuída a"}</span><select onchange="assignOt('${id}', this.value)">${techOptions(o.tecnico)}</select></label>
         ${o.tecnico && o.tecnico !== ME && !locked && phoneOf(o.tecnico) ? `<div style="margin-top:10px">${waBtn(phoneOf(o.tecnico), waOrdem(o), "Enviar também por WhatsApp")}</div>` : ""}</div>`:""}
       <div class="panel"><dl class="kv">
-        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap">👥 condóminos</a>` : ""}</dd>
+        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap"><i class=ico-users></i>condóminos</a>` : ""}</dd>
         ${c.morada?`<dt>Morada</dt><dd>${esc(c.morada)}${maps}</dd>`:""}
         ${o.equipId && S.equip[o.equipId]?`<dt>Equipamento</dt><dd><a href="#" onclick="event.preventDefault();openEquip('${o.equipId}')" style="color:inherit">${esc(eqName(o.equipId))}</a></dd>`:""}
         ${o.zona?`<dt>Zona</dt><dd>${esc(o.zona)}</dd>`:""}
@@ -1485,7 +1485,7 @@ function openOt(id){
         <div class="progress"><i style="width:${done/ck.length*100}%"></i></div>
         ${ck.map((x,i)=>`<div class="chk ${x.ok?"ok":""}" onclick="toggleCk('${id}',${i})"><span class="box">${x.ok?"✓":""}</span><span class="lbl">${esc(x.t)}</span></div>`).join("")}</div>`:""}
       ${isExt(o) ? "" : `<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center"><b>Fotografias</b>
-        <label class="btn sm upl">📷 Adicionar<input type="file" accept="image/*" multiple onchange="addFotos('${id}', this)"></label></div>
+        <label class="btn sm upl"><i class=ico-camera></i>Adicionar<input type="file" accept="image/*" multiple onchange="addFotos('${id}', this)"></label></div>
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>`}
       ${isExt(o) ? "" : `<div class="panel"><b>Peças / materiais usados</b>
         <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
@@ -1506,9 +1506,9 @@ function openOt(id){
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
-      ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px">✅ Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
-      <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')">🖨️ Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
-      ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')">💾 Guardar e sair</button>` : ""}
+      ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px"><i class=ico-check></i>Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
+      <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
+      ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')"><i class=ico-save></i>Guardar e sair</button>` : ""}
       ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">${isExt(o) ? "Resolvida pela empresa" : "Concluir ordem"}</button>`}</div>`;
   };
   openSheet((numOt(S.ots[id]) ? `<span class="mono" style="color:var(--muted);font-weight:500">${numOt(S.ots[id])}</span> ` : "") + esc(S.ots[id].titulo), draw(), () => {
@@ -1553,7 +1553,7 @@ function reportText(id){
 function showReport(id){
   const txt = reportText(id);
   openSheet("Relatório", `<pre class="rep" id="rep">${esc(txt)}</pre>
-    <div class="actions"><button class="btn" onclick="openOt('${id}')">Voltar</button><span class="sp"></span>${isExt(S.ots[id]) ? "" : `<button class="btn" onclick="printOt('${id}')">🖨️ Imprimir</button>`}${navigator.share?`<button class="btn" onclick="shareReport('${id}')">Partilhar</button>`:""}<button class="btn pri" onclick="copyText(${esc(JSON.stringify(txt))})">Copiar texto</button></div>
+    <div class="actions"><button class="btn" onclick="openOt('${id}')">Voltar</button><span class="sp"></span>${isExt(S.ots[id]) ? "" : `<button class="btn" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir</button>`}${navigator.share?`<button class="btn" onclick="shareReport('${id}')">Partilhar</button>`:""}<button class="btn pri" onclick="copyText(${esc(JSON.stringify(txt))})">Copiar texto</button></div>
     <p style="font-size:13px;color:var(--muted)">Copie ou partilhe para um e-mail ou mensagem para a administração do condomínio.</p>`);
 }
 function shareReport(id){ navigator.share({ title: "Relatório — " + S.ots[id].titulo, text: reportText(id) }).catch(() => {}); }
@@ -1632,14 +1632,14 @@ const entregaLimite = o => { const t = new Date(Date.parse(o.criadaEm) + DIA_MS)
 function openEntrega(id){
   const o = S.ots[id]; if(!o) return;
   const c = S.condos[condoOf(o)] || {}; const aberta = entregaAberta(o) && IS_ADMIN;
-  openSheet("📦 Entrega nº " + (numOt(o) || "—"), `
+  openSheet("<i class=ico-box></i>Entrega nº " + (numOt(o) || "—"), `
     <div class="panel"><dl class="kv"><dt>Prédio</dt><dd>${esc(c.nome ? cLabel(c) : "—")}</dd><dt>Data</dt><dd>${fmtDate(o.data || o.criada)}</dd>
       <dt>Levou</dt><dd>${esc(entregaQuem(o))}</dd><dt>Entregou</dt><dd>${esc(nm(o.criadoPor))}</dd></dl></div>
     <div class="panel"><b>Material</b><div class="parts" style="margin-top:6px">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
     ${entregaObs(o) ? `<div class="panel" style="white-space:pre-wrap;font-size:14px">${esc(entregaObs(o))}</div>` : ""}
     ${aberta ? `<div class="note" style="font-size:13px">Se houver algum engano, pode corrigir ou apagar até <b>${esc(entregaLimite(o))}</b>. Depois fica só para consulta.</div>`
-             : `<div class="note" style="font-size:13px">🔒 Registo fechado — passaram mais de 24 horas. Só para consulta e impressão.</div>`}
-    <div class="actions">${aberta ? `<button class="btn danger ico" onclick="confirmarApagarEntrega('${id}')">${ICONS.apagar}Apagar</button><button class="btn ico" onclick="openSaidaDireta('${id}')">${ICONS.editar}Corrigir</button>` : ""}<span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+             : `<div class="note" style="font-size:13px"><i class=ico-lock></i>Registo fechado — passaram mais de 24 horas. Só para consulta e impressão.</div>`}
+    <div class="actions">${aberta ? `<button class="btn danger ico" onclick="confirmarApagarEntrega('${id}')">${ICONS.apagar}Apagar</button><button class="btn ico" onclick="openSaidaDireta('${id}')">${ICONS.editar}Corrigir</button>` : ""}<span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button><button class="btn pri" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir guia</button></div>`);
 }
 function confirmarApagarEntrega(id){
   const o = S.ots[id]; if(!o) return;
@@ -1660,11 +1660,11 @@ function entregaQuem(o){ const m = /levantado no escritório por (.+?)\.(\n|$)/.
 function entregaObs(o){ return (o.notas || "").trim(); }
 function guiaPronta(id){
   const o = S.ots[id]; if(!o) return;
-  openSheet("📦 Entrega registada", `
+  openSheet("<i class=ico-box></i>Entrega registada", `
     <p style="margin:0 0 10px">Guia nº <b class="mono">${esc(numOt(o) || "—")}</b> · ${esc(cName(condoOf(o)))}<br>Levou: <b>${esc(entregaQuem(o))}</b> · Entregou: <b>${esc(nm(o.criadoPor))}</b></p>
     <div class="panel"><div class="parts">${(o.pecas || []).map(p => `<div class="part"><span class="n">${esc(p.n)}</span><span class="mono">${esc(p.q)}</span></div>`).join("")}</div></div>
-    <p style="font-size:13px;color:var(--muted)">Imprima agora e assine a guia. A guia fica guardada em <b>Ordens → 📦 Entregas</b>, para voltar a consultar ou imprimir.</p>
-    <div class="actions"><button class="btn" onclick="closeSheet()">Fechar</button><span class="sp"></span><button class="btn pri" onclick="printOt('${id}')">🖨️ Imprimir guia</button></div>`);
+    <p style="font-size:13px;color:var(--muted)">Imprima agora e assine a guia. A guia fica guardada em <b>Ordens → <i class=ico-box></i>Entregas</b>, para voltar a consultar ou imprimir.</p>
+    <div class="actions"><button class="btn" onclick="closeSheet()">Fechar</button><span class="sp"></span><button class="btn pri" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir guia</button></div>`);
 }
 function guiaHtml(o){
   const c = S.condos[condoOf(o)] || {}; const pc = o.pecas || [];
@@ -1717,7 +1717,7 @@ function openBatchPrint(){
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_rel" checked> Relatórios completos (um por página)</label>
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input type="checkbox" id="b_fot" checked> Incluir fotografias nos relatórios</label>
     <div class="note" style="background:var(--blue-bg);color:var(--blue)" id="b_count"></div>
-    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="b_btn" onclick="doBatchPrint()">🖨️ Imprimir</button></div>`);
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="b_btn" onclick="doBatchPrint()"><i class=ico-print></i>Imprimir</button></div>`);
   batchCount();
 }
 async function doBatchPrint(){
@@ -1757,7 +1757,7 @@ async function doBatchPrint(){
       <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`);
   }
   if(withRep) for(const o of list) parts.push(reportHtml(o, withPh));
-  btn.disabled = false; btn.textContent = "🖨️ Imprimir";
+  btn.disabled = false; btn.innerHTML = "<i class=ico-print></i>Imprimir";
   await printHtml(parts.map((h, i) => i ? `<div class="pb">${h}</div>` : h).join(""));
 }
 
@@ -1783,7 +1783,7 @@ function openPendPrint(){
     <label class="f"><span>Estado</span><select id="p_est" onchange="pendCount()"><option value="">Abertas e em curso</option><option value="aberta">Só abertas</option><option value="curso">Só em curso</option></select></label>
     <div class="note">Quando a ordem ainda não está atribuída na app, conta para o responsável indicado no Gecond. As avarias com empresa externa (elevadores) não entram.</div>
     <div class="note" style="background:var(--blue-bg);color:var(--blue)" id="p_count"></div>
-    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="p_btn" onclick="doPendPrint()">🖨️ Imprimir</button></div>`);
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="p_btn" onclick="doPendPrint()"><i class=ico-print></i>Imprimir</button></div>`);
   pendCount();
 }
 async function doPendPrint(){
@@ -1865,7 +1865,7 @@ function viewStock(){
   const grp = GRUPOS_MOV.find(g => g[0] === stkTipo) || GRUPOS_MOV[0];
   const movsTipo = grp[2] ? movsAll.filter(m => grp[2].includes(m.tipo)) : movsAll;
   const movs = movsTipo.slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || b.id - a.id).slice(0, 60);
-  return `<h2>Stock <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="stockExport()">⬇️ Excel</button></span></h2>
+  return `<h2>Stock <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="stockExport()"><i class=ico-down></i>Excel</button></span></h2>
   <div class="stats">
     <div class="stat"><b>${numTxt(uni("principal"))}</b><span>Armazém principal</span></div>
     <div class="stat"><b>${numTxt(uni("c5arm"))}</b><span>Armazém C5</span></div>
@@ -1881,13 +1881,13 @@ function viewStock(){
   </div>${v.semPreco ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${v.semPreco} saída(s) sem preço de venda — defina o preço em Equipa → Materiais.</div>` : ""}`; })()}
   <div class="actions" style="margin:0 0 12px;flex-wrap:wrap">
     <button class="btn pri" onclick="openMov('compra')">+ Compra</button>
-    <button class="btn" onclick="openMov('carga')">🚐 Carga p/ carrinha</button>
-    <button class="btn" onclick="openMov('devolucao')">↩️ Devolução</button>
-    <button class="btn" onclick="openMov('transferencia')">📦 Carregar Arm. C5 / ⇄ Transferência</button>
+    <button class="btn" onclick="openMov('carga')"><i class=ico-van></i>Carga p/ carrinha</button>
+    <button class="btn" onclick="openMov('devolucao')"><i class=ico-undo></i>Devolução</button>
+    <button class="btn" onclick="openMov('transferencia')"><i class=ico-swap></i>Carregar Arm. C5 / Transferência</button>
     <button class="btn" onclick="openMov('ajuste')">± Ajuste</button>
-    <button class="btn" onclick="openSaidaDireta()">📦 Entrega de material</button>
+    <button class="btn" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button>
   </div>
-  ${baixos.length ? `<div class="note" style="background:var(--red-bg,#fdecea);color:var(--red,#b42318)">⚠️ <b>Repor no armazém:</b> ${baixos.map(a => `${esc(a.nome)} (${numTxt((Q.principal || {})[a.codigo] || 0)} / mín. ${numTxt(Number(a.minimo)||0)})`).join(" · ")}</div>` : ""}
+  ${baixos.length ? `<div class="note" style="background:var(--red-bg,#fdecea);color:var(--red,#b42318)"><i class=ico-alert></i><b>Repor no armazém:</b> ${baixos.map(a => `${esc(a.nome)} (${numTxt((Q.principal || {})[a.codigo] || 0)} / mín. ${numTxt(Number(a.minimo)||0)})`).join(" · ")}</div>` : ""}
   ${negs.length ? `<div class="note">Stock negativo — falta registar uma carga ou corrigir com um ajuste: ${esc(negs.join(" · "))}</div>` : ""}
   <div class="chips"><button class="chip ${!stkLoc?"on":""}" onclick="stkLoc='';render()">Todos os locais</button>${locs.map(l => `<button class="chip ${stkLoc===l.id?"on":""}" onclick="stkLoc='${l.id}';render()">${esc(locCurto(l))}</button>`).join("")}</div>
   <div class="panel" style="padding:0;overflow-x:auto"><table class="stk"><thead><tr><th style="text-align:left">Artigo</th>${shown.map(l => `<th title="${esc(l.nome)}">${esc(locCurto(l))}</th>`).join("")}${stkLoc ? "" : "<th>Total</th>"}<th>Mín.</th></tr></thead><tbody>
@@ -1993,8 +1993,8 @@ function openTrabalho(cid){
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
     <label class="f"><span>Notas</span><textarea id="tw_notas" placeholder="Detalhes do que foi feito, o que fica por fazer…"></textarea></label>
-    <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer">📷 Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
-    <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)">💾 Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)">✅ Concluir trabalho</button></div>`);
+    <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer"><i class=ico-camera></i>Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
+    <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)"><i class=ico-save></i>Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)"><i class=ico-check></i>Concluir trabalho</button></div>`);
   drawTwLines();
 }
 function drawTwLines(){ const el = $("#tw_lines"); if(!el) return; el.innerHTML = twLines.map((x, i) => `<div class="part"><span class="n">${esc(x.n)}</span><span class="mono">× ${numTxt(x.q)}</span><button class="btn sm" onclick="twLines.splice(${i},1);drawTwLines()">✕</button></div>`).join(""); }
@@ -2075,7 +2075,7 @@ function openStockArt(c){
       <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${numTxt(locs.reduce((s, l) => s + ((Q[l.id] || {})[c] || 0), 0))}</span></div></div></div>
     <div class="grid2"><label class="f"><span>Stock mínimo no armazém</span><input id="sa_min" inputmode="decimal" value="${numTxt(Number(a.minimo) || 0)}"></label>
     <label class="f"><span>Custo médio (€)</span><input id="sa_custo" inputmode="decimal" value="${a.custo !== "" && a.custo != null ? String(Math.round(Number(a.custo) * 100) / 100).replace(".", ",") : ""}"></label></div>
-    <div class="actions"><button class="btn" onclick="closeSheet();openMov('compra','${esc(c)}')">+ Compra</button><button class="btn" onclick="closeSheet();openMov('carga','${esc(c)}')">🚐 Carga</button><span class="sp"></span><button class="btn pri" onclick="saveStockArt('${esc(c)}')">Guardar</button></div>
+    <div class="actions"><button class="btn" onclick="closeSheet();openMov('compra','${esc(c)}')">+ Compra</button><button class="btn" onclick="closeSheet();openMov('carga','${esc(c)}')"><i class=ico-van></i>Carga</button><span class="sp"></span><button class="btn pri" onclick="saveStockArt('${esc(c)}')">Guardar</button></div>
     ${(() => { const v = vendasPeriodo("tudo", c); return v.q ? `<div class="panel"><div class="parts"><div class="part"><span class="n">Aplicado em obra</span><span class="mono">${numTxt(v.q)}</span></div><div class="part"><span class="n">Total vendido</span><span class="mono">${eur(v.venda)}</span></div><div class="part"><span class="n">Custo estimado</span><span class="mono">${eur(v.custo)}</span></div><div class="part" style="font-weight:700"><span class="n">Margem estimada</span><span class="mono">${eur(v.margem)}</span></div></div></div>` : ""; })()}
     ${Object.keys(porPredio).length ? `<h3>Aplicado por prédio (pela app)</h3><div class="panel"><div class="parts">${Object.entries(porPredio).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="part"><span class="n">${esc(cName(k))}</span><span class="mono">${numTxt(v)}</span></div>`).join("")}</div></div>` : ""}`);
 }
