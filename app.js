@@ -354,8 +354,9 @@ const r2 = v => Math.round(v * 100) / 100;
 // Tempo por dias: o.dias = [{d:"AAAA-MM-DD", m:minutos}]. Sem dias, conta como um só dia com o.tempo.
 const diasDe = o => Array.isArray(o.dias) && o.dias.length ? o.dias : (Number(o.tempo) ? [{ d: o.concluida || o.data || "", m: Number(o.tempo) }] : []);
 const nDias = o => Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0).length : 0;
+const diaTxt = x => (x.d ? fmtDate(x.d).slice(0, 5) + " " : "") + (x.i && x.f ? x.i + "–" + x.f : fmtTempo(x.m));
 const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
-const diasTxt = o => nDias(o) > 1 ? o.dias.filter(x => Number(x.m) > 0).map(x => (x.d ? fmtDate(x.d).slice(0, 5) : "?") + ": " + fmtTempo(x.m).replace(" 00 min", " h").replace(" h h", " h")).join(" · ") : "";
+const diasTxt = o => { const l = Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0) : []; return l.length > 1 || l.some(x => x.i) ? l.map(diaTxt).join(" · ") : ""; };
 const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
   if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
@@ -1563,25 +1564,39 @@ function saveClose(id){
   closeSheet();
   toast(o.estado === "concluida" ? "Guardado." : "Guardado — a ordem continua por fechar.");
 }
-function diasRows(lista, onch, semData){
-  return lista.map((x, i) => `<div class="drow">${semData ? "" : `<input type="date" class="dd" value="${esc(x.d || today())}" onchange="${onch}">`}<input type="number" min="0" class="dh" value="${Math.floor((x.m || 0) / 60)}" onchange="${onch}"> h <input type="number" min="0" max="59" step="5" class="dm" value="${(x.m || 0) % 60}" onchange="${onch}"> min${!semData && lista.length > 1 ? `<button type="button" class="btn sm" onclick="this.parentNode.remove();(${onch.replace(/"/g, "&quot;")})" aria-label="Tirar dia">✕</button>` : ""}</div>`).join("");
+function diasRows(lista, onch, semData, comX){
+  const x_ = onch.replace(/"/g, "&quot;");
+  return lista.map(x => `<div class="drow" data-onch="${x_}">
+    <div class="dl1">${semData ? "" : `<input type="date" class="dd" value="${esc(x.d || today())}" onchange="${onch}">`}<input type="number" min="0" class="dh" value="${Math.floor((x.m || 0) / 60)}" onchange="limparHoras(this);${onch}"><span class="dlab">h</span><input type="number" min="0" max="59" step="5" class="dm" value="${(x.m || 0) % 60}" onchange="limparHoras(this);${onch}"><span class="dlab">min</span>${!semData && (comX || lista.length > 1) ? `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>` : ""}</div>
+    <div class="dl2"><span class="dlab">ou das</span><input type="time" class="di" value="${esc(x.i || "")}" onchange="horaDia(this)"><span class="dlab">às</span><input type="time" class="df" value="${esc(x.f || "")}" onchange="horaDia(this)"></div></div>`).join("");
 }
+// Das X às Y → calcula as horas e minutos dessa linha
+function horaDia(el){
+  const r = el.closest(".drow"); const a = r.querySelector(".di").value, b = r.querySelector(".df").value;
+  if(a && b){ const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number); let t = (h2 * 60 + m2) - (h1 * 60 + m1); if(t < 0) t += 24 * 60;
+    r.querySelector(".dh").value = Math.floor(t / 60); r.querySelector(".dm").value = t % 60; }
+  correrOnch(r);
+}
+function limparHoras(el){ const r = el.closest(".drow"); r.querySelector(".di").value = ""; r.querySelector(".df").value = ""; }
+function tirarDia(btn){ const r = btn.closest(".drow"); const box = r.parentNode; const f = r.dataset.onch; r.remove(); if(box.querySelectorAll(".drow").length === 1){ const b = box.querySelector(".drow button"); if(b) b.remove(); } if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
+function correrOnch(r){ const f = r.dataset.onch; if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
 function lerDias(elId){ const el = document.getElementById(elId); if(!el) return [];
-  return [...el.querySelectorAll(".drow")].map(r => ({ d: (r.querySelector(".dd") || {}).value || "", m: (parseInt(r.querySelector(".dh").value) || 0) * 60 + (parseInt(r.querySelector(".dm").value) || 0) })); }
-function maisDia(elId, depois){
+  return [...el.querySelectorAll(".drow")].map(r => { const o = { d: (r.querySelector(".dd") || {}).value || "", m: (parseInt(r.querySelector(".dh").value) || 0) * 60 + (parseInt(r.querySelector(".dm").value) || 0) };
+    const a = r.querySelector(".di").value, b = r.querySelector(".df").value; if(a && b){ o.i = a; o.f = b; } return o; }); }
+function maisDia(elId){
   const el = document.getElementById(elId); if(!el) return; const rows = el.querySelectorAll(".drow"); const ult = rows.length ? (rows[rows.length - 1].querySelector(".dd") || {}).value : "";
   let nd = today(); if(ult && ult >= today()){ const t = new Date(ult + "T12:00:00"); t.setDate(t.getDate() + 1); nd = iso(t); }
-  const onch = (el.querySelector("input") || {}).getAttribute ? el.querySelector("input").getAttribute("onchange") || "" : "";
-  el.insertAdjacentHTML("beforeend", diasRows([{ d: nd, m: 0 }], onch, false));
-  if(rows.length === 1 && !rows[0].querySelector("button")) rows[0].insertAdjacentHTML("beforeend", `<button type="button" class="btn sm" onclick="this.parentNode.remove();(${onch.replace(/"/g, "&quot;")})" aria-label="Tirar dia">✕</button>`);
-  const novo = el.querySelector(".drow:last-child .dh"); if(novo) novo.focus();
+  const onch = rows.length ? (rows[0].dataset.onch || "").replace(/&quot;/g, '"') : "";
+  el.insertAdjacentHTML("beforeend", diasRows([{ d: nd, m: 0 }], onch, false, true));
+  if(rows.length === 1 && !rows[0].querySelector("button")) rows[0].querySelector(".dl1").insertAdjacentHTML("beforeend", `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>`);
+  const novo = el.querySelector(".drow:last-child .di"); if(novo) novo.focus();
 }
 function onTempo(id){
   const o = S.ots[id]; if(!o) return;
   const dias = lerDias("t_dias"); const t = dias.reduce((a, x) => a + x.m, 0);
   const patch = {};
   if(o.tempo !== t) patch.tempo = t;
-  if(S.diasCol){ const limpos = dias.filter(x => x.m > 0); const novo = limpos.length > 1 ? limpos : [];
+  if(S.diasCol){ const limpos = dias.filter(x => x.m > 0); const novo = limpos.length > 1 || limpos.some(x => x.i) ? limpos : [];
     if(JSON.stringify(o.dias || []) !== JSON.stringify(novo)) patch.dias = novo;
     if(limpos.length > 1 && nDesloc(o) < limpos.length) patch.deslocacoes = limpos.length; }
   if(Object.keys(patch).length) updOt(id, patch, true);
@@ -1697,7 +1712,7 @@ function openOt(id){
         <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
       <div class="panel"><b>Tempo gasto</b>${nDias(o) > 1 ? ` <span style="color:var(--muted);font-size:13px">· total ${tempoTxt(o)}</span>` : ""}
         <div id="t_dias" style="margin-top:6px">${diasRows(S.diasCol ? (o.dias && o.dias.length ? o.dias : [{ d: o.concluida || o.data || today(), m: Number(o.tempo) || 0 }]) : [{ d: "", m: Number(o.tempo) || 0 }], `onTempo('${id}')`, !S.diasCol)}</div>
-        ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias', ()=>onTempo('${id}'))">+ Mais um dia</button>` : ""}</div>
+        ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias')">+ Mais um dia</button>` : ""}</div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
@@ -2190,7 +2205,7 @@ function openTrabalho(cid){
     <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
     <div id="tw_tempo">
       <div class="panel"><b>Tempo gasto</b><div id="tw_dias" style="margin-top:6px">${diasRows([{ d: today(), m: 0 }], "twDiasMud()", !S.diasCol)}</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias', twDiasMud)">+ Mais um dia</button>` : ""}
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias')">+ Mais um dia</button>` : ""}
         <span style="display:flex;gap:6px;align-items:center;margin-left:auto">Deslocações <input id="tw_d" type="number" min="0" value="1" style="width:56px;border:1px solid var(--line);border-radius:10px;padding:8px"></span></div></div>
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
@@ -2219,7 +2234,7 @@ async function saveTrabalho(concluir){
   const exBtn = document.querySelector("#tw_extra button.on"); const extra = so || !exBtn ? "" : exBtn.dataset.k;
   const t = today(), now = nowIso();
   const o = { id: newId(), titulo: tit, condoId: cid, equipId: "", zona: val("tw_zona"), tecnico: ME, tipo: "corretiva", prioridade: "media", estado: concluir ? "concluida" : "curso",
-    data: t, descricao: "", solicitante: "", checklist: [], pecas: twLines.slice(), fotos: [], notas: val("tw_notas"), tempo, ...(S.diasCol && twDias.length > 1 ? { dias: twDias } : {}),
+    data: t, descricao: "", solicitante: "", checklist: [], pecas: twLines.slice(), fotos: [], notas: val("tw_notas"), tempo, ...(S.diasCol && (twDias.length > 1 || twDias.some(x => x.i)) ? { dias: twDias } : {}),
     deslocacoes: so ? 0 : Math.max(0, parseInt(val("tw_d")) || 0), soMaterial: so, criada: t, criadaEm: now, criadoPor: ME, atribuida: t, atribuidaEm: now, atribuidoPor: ME,
     ...(concluir ? { concluida: t, concluidaEm: now, concluidoPor: ME } : {}), ...(Object.values(S.ots).some(x => "extra" in x) || extra ? { extra } : {}) };
   const fotos = twFotos.slice();
@@ -2317,7 +2332,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
