@@ -1613,7 +1613,7 @@ const GRUPOS_OC = [
   { g: "Portões e garagem", re: /port[aã]o|comando|garagem|motor/i, svc: 2, mat: /comando|lubrific|massa/i },
   { g: "Iluminação", re: /l[aâ]mpad|luz|luzes|ilumin|sensor|temporizador|foco|apag/i, svc: 0, mat: /l[aâ]mpad|foco|led|sensor/i },
   { g: "Eletricidade", re: /quadro el|disjunt|diferencial|tomada|curto|eletric/i, svc: 4, mat: /tomada|disjunt/i },
-  { g: "Placas e sinalização", re: /placa|sinal|pinos|acr[ií]lic/i, svc: 5, mat: /placa|quadro/i },
+  { g: "Placas e sinalização", re: /placa|sinal[eé]tica|sinaliza|pinos/i, svc: 5, mat: /placa|quadro/i },
   { g: "Elevadores", re: /elevador/i, svc: -1, mat: null },
 ];
 const textoOt = o => (o.titulo || "") + " " + (o.descricao || "");
@@ -1625,12 +1625,14 @@ function sugestoesPanel(o, id, mine, locked, sm){
   const cid = condoOf(o); const blocos = [];
   if(mine && !sm && grs.length){
     const notas = o.notas || ""; const ja = x => notas.split("\n").some(l => l.replace(/^[•\-]\s*/, "").trim() === x);
-    const svcs = [...new Set(grs.flatMap(g => SERVICOS[g.svc][1]))].filter(x => !ja(x)).slice(0, 5);
+    const pal = (t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/[a-z]{5,}/g) || []).map(w => w.slice(0, 6));
+    const pontos = x => { const n = x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); return pal.filter(w => n.includes(w)).length; };
+    const svcs = [...new Set(grs.flatMap(g => SERVICOS[g.svc][1]))].filter(x => !ja(x)).map((x, i) => [x, pontos(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(a => a[0]).slice(0, 5);
     if(svcs.length) blocos.push(`<div class="muted">Serviços prováveis <span>(toque para pôr nas notas)</span></div>${svcs.map(x => `<button type="button" class="schip" onclick="poeServico('t_notas', this)"><span class="t">${esc(x)}</span></button>`).join("")}`);
   }
   if(mine && grs.length){
     const tem = new Set((o.pecas || []).map(x => x.c));
-    const mats = matList().filter(m => !tem.has(m.codigo) && grs.some(g => g.mat && g.mat.test(m.nome + " " + m.codigo))).slice(0, 4);
+    const mats = matList().filter(m => !tem.has(m.codigo) && grs[0].mat && grs[0].mat.test(m.nome + " " + m.codigo)).slice(0, 4);
     if(mats.length) blocos.push(`<div class="muted">Material habitual neste tipo de serviço</div>${mats.map(m => `<button type="button" class="schip" onclick="sugMat('${id}','${esc(m.codigo)}')">+ ${esc(m.nome)}</button>`).join("")}`);
   }
   const linhas = [];
