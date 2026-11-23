@@ -258,15 +258,30 @@ function b64ToBytes(b64){ const p = "=".repeat((4 - b64.length % 4) % 4); const 
 async function saveSub(s){ const j = s.toJSON(); await sb.from("push_subscricoes").upsert({ endpoint: j.endpoint, user_id: ME, p256dh: j.keys.p256dh, auth: j.keys.auth }); }
 async function enablePush(){
   if(isIOS && !isStandalone){ showInstallHelp(); return; }
-  if(!("serviceWorker" in navigator) || !("PushManager" in window)){ toast("Este navegador não suporta notificações. Use o Chrome (Android) ou o Safari (iPhone)."); return; }
-  const perm = await Notification.requestPermission();
-  if(perm !== "granted"){ toast("Notificações bloqueadas. Ative-as nas definições do telemóvel para esta aplicação."); return; }
+  // Navegadores dentro de outras apps (WhatsApp, Facebook, Gmail…) não têm notificações
+  if(typeof Notification === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)){ ajudaNotificacoes("semsuporte"); return; }
+  if(Notification.permission === "denied"){ ajudaNotificacoes("bloqueadas"); return; }
+  toast("A pedir autorização…");
+  let perm;
+  try{ perm = await Promise.race([Notification.requestPermission(), new Promise(r => setTimeout(() => r("tempo"), 20000))]); }
+  catch(e){ perm = "erro"; }
+  if(perm === "denied"){ ajudaNotificacoes("bloqueadas"); return; }
+  if(perm !== "granted"){ ajudaNotificacoes("semresposta"); return; }
   try{
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, j) => setTimeout(() => j(new Error("a aplicação ainda não terminou de carregar — feche-a, volte a abrir e tente de novo")), 10000))]);
     let s = await reg.pushManager.getSubscription();
     if(!s) s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(CFG.VAPID_PUBLIC_KEY) });
     await saveSub(s); pushOn = true; render(); toast("Notificações ativadas neste telemóvel.");
   }catch(e){ console.error(e); toast("Não foi possível ativar as notificações: " + e.message); }
+}
+function ajudaNotificacoes(caso){
+  const passosChrome = `<ol style="line-height:1.7;padding-left:20px;margin-top:0"><li>Abra o <b>Chrome</b> (não o WhatsApp nem outra app).</li><li>Escreva o endereço <b>${esc(location.host + location.pathname)}</b> e entre.</li><li>Toque nos <b>três pontos</b> (⋮) → <b>Instalar aplicação</b> (ou <b>Adicionar ao ecrã principal</b>).</li><li>Abra a app pelo ícone novo e carregue em <b>Ativar</b>.</li></ol>`;
+  const txt = {
+    semsuporte: `<p style="margin-top:0">Este navegador não permite notificações. Acontece quando a app é aberta a partir de um link no WhatsApp, Facebook ou outra aplicação.</p>${passosChrome}`,
+    bloqueadas: `<p style="margin-top:0">As notificações desta app foram bloqueadas neste telemóvel. Para as desbloquear:</p><ol style="line-height:1.7;padding-left:20px"><li>Mantenha o dedo no ícone da app (ou, no Chrome, toque no <b>cadeado</b> ao lado do endereço).</li><li>Escolha <b>Informações da app</b> / <b>Definições do site</b> → <b>Notificações</b>.</li><li>Escolha <b>Permitir</b>, volte à app e carregue em <b>Ativar</b>.</li></ol>`,
+    semresposta: `<p style="margin-top:0">O telemóvel não mostrou o pedido de autorização (ou foi fechado sem resposta).</p><p>Se a app estiver aberta dentro de outra aplicação ou num navegador sem notificações, faça assim:</p>${passosChrome}<p style="font-size:13px;color:var(--muted)">Se já estiver no Chrome, veja se apareceu um <b>sino riscado</b> na barra do endereço: toque nele e escolha <b>Permitir</b>.</p>`
+  }[caso];
+  openSheet("Ativar notificações", txt + `<div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button></div>`);
 }
 function showInstallHelp(){
   openSheet("Instalar no iPhone", `<p style="margin-top:0">No iPhone, as notificações só funcionam com a aplicação instalada no ecrã principal:</p>
@@ -2265,7 +2280,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
