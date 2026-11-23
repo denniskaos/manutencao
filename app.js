@@ -356,15 +356,15 @@ const diasDe = o => Array.isArray(o.dias) && o.dias.length ? o.dias : (Number(o.
 const nDias = o => Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0).length : 0;
 const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
 const diasTxt = o => nDias(o) > 1 ? o.dias.filter(x => Number(x.m) > 0).map(x => (x.d ? fmtDate(x.d).slice(0, 5) : "?") + ": " + fmtTempo(x.m).replace(" 00 min", " h").replace(" h h", " h")).join(" · ") : "";
-const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora${nDias(o) > 1 ? " de cada dia" : ""} + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
+const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
   if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
   const mat = r2(partsTotal(o.pecas || []));
   const horas = (Number(o.tempo) || 0) / 60;
   const so = o.soMaterial === true;
   const tt = S.tarTec[o.tecnico]; const min = Number(o.tempo) || 0;
-  const tarDia = m => m > 0 ? tt.hora1 + Math.max(0, m - 60) / 60 * tt.hora : 0;   // tarifa própria: 1.ª hora em cada dia
-  const mo = so ? 0 : tt ? r2(diasDe(o).reduce((t, x) => t + tarDia(Number(x.m) || 0), 0)) : r2(horas * S.tarifas.hora);
+  // tarifa própria: 1.ª hora só uma vez por ordem, mesmo com vários dias na mesma folha
+  const mo = so ? 0 : tt ? r2(min > 0 ? tt.hora1 + Math.max(0, min - 60) / 60 * tt.hora : 0) : r2(horas * S.tarifas.hora);
   const nd = so || tt ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
   const ex = so ? 0 : r2(extraVal(o.extra));
   return { mat, mo, nd, desl, so, ex, exTipo: so ? "" : (o.extra || ""), tt, total: r2(mat + mo + desl + ex) };
