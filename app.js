@@ -40,7 +40,7 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias"],
 };
 const NULLABLE = new Set(["origemStock","equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
@@ -149,7 +149,7 @@ async function loadAll(uid){
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
     S.plans = Object.fromEntries(plans.map(r => [r.id, fromRow(r)]));
     S.cdm = Object.fromEntries((await all("condominos")).map(r => [r.id, fromRow(r)]));
-    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)]));
+    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r);
     S.notifs = notifs.map(fromRow);
   }catch(e){ console.error(e); mode = "error"; render(); return; }
   const me = S.equipa[ME];
@@ -215,7 +215,7 @@ async function refreshQuiet(){
       sb.from("ordens").select("*").range(0, 9999),
       sb.from("notificacoes").select("*").order("id", { ascending: false }).limit(80),
     ]);
-    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)]));
+    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r);
     if(notifs) S.notifs = notifs.map(fromRow);
     render(); autoReadNotifs();
   } finally { refreshing = false; }
@@ -351,14 +351,20 @@ const partsTotal = pc => pc.reduce((t, x) => t + (lineTotal(x) || 0), 0);
 const parsePrice = v => { const n = parseFloat(String(v).replace(/\s|€/g, "").replace(",", ".")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
 const nDesloc = o => (o.deslocacoes === "" || o.deslocacoes === undefined || o.deslocacoes === null) ? 1 : Number(o.deslocacoes) || 0;
 const r2 = v => Math.round(v * 100) / 100;
-const moTxt = (o, v) => v.tt ? `${fmtTempo(o.tempo)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${fmtTempo(o.tempo)} × ${eur(S.tarifas.hora)}/h`;
+// Tempo por dias: o.dias = [{d:"AAAA-MM-DD", m:minutos}]. Sem dias, conta como um só dia com o.tempo.
+const diasDe = o => Array.isArray(o.dias) && o.dias.length ? o.dias : (Number(o.tempo) ? [{ d: o.concluida || o.data || "", m: Number(o.tempo) }] : []);
+const nDias = o => Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0).length : 0;
+const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
+const diasTxt = o => nDias(o) > 1 ? o.dias.filter(x => Number(x.m) > 0).map(x => (x.d ? fmtDate(x.d).slice(0, 5) : "?") + ": " + fmtTempo(x.m).replace(" 00 min", " h").replace(" h h", " h")).join(" · ") : "";
+const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora${nDias(o) > 1 ? " de cada dia" : ""} + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
   if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
   const mat = r2(partsTotal(o.pecas || []));
   const horas = (Number(o.tempo) || 0) / 60;
   const so = o.soMaterial === true;
   const tt = S.tarTec[o.tecnico]; const min = Number(o.tempo) || 0;
-  const mo = so ? 0 : tt ? r2(min > 0 ? tt.hora1 + Math.max(0, min - 60) / 60 * tt.hora : 0) : r2(horas * S.tarifas.hora);
+  const tarDia = m => m > 0 ? tt.hora1 + Math.max(0, m - 60) / 60 * tt.hora : 0;   // tarifa própria: 1.ª hora em cada dia
+  const mo = so ? 0 : tt ? r2(diasDe(o).reduce((t, x) => t + tarDia(Number(x.m) || 0), 0)) : r2(horas * S.tarifas.hora);
   const nd = so || tt ? 0 : nDesloc(o); const desl = r2(nd * S.tarifas.deslocacao);
   const ex = so ? 0 : r2(extraVal(o.extra));
   return { mat, mo, nd, desl, so, ex, exTipo: so ? "" : (o.extra || ""), tt, total: r2(mat + mo + desl + ex) };
@@ -1557,7 +1563,29 @@ function saveClose(id){
   closeSheet();
   toast(o.estado === "concluida" ? "Guardado." : "Guardado — a ordem continua por fechar.");
 }
-function onTempo(id){ const h = parseInt(val("t_h"))||0, m = parseInt(val("t_m"))||0; const t = h*60+m; if(S.ots[id] && S.ots[id].tempo !== t) updOt(id, {tempo: t}, true); }
+function diasRows(lista, onch, semData){
+  return lista.map((x, i) => `<div class="drow">${semData ? "" : `<input type="date" class="dd" value="${esc(x.d || today())}" onchange="${onch}">`}<input type="number" min="0" class="dh" value="${Math.floor((x.m || 0) / 60)}" onchange="${onch}"> h <input type="number" min="0" max="59" step="5" class="dm" value="${(x.m || 0) % 60}" onchange="${onch}"> min${!semData && lista.length > 1 ? `<button type="button" class="btn sm" onclick="this.parentNode.remove();(${onch.replace(/"/g, "&quot;")})" aria-label="Tirar dia">✕</button>` : ""}</div>`).join("");
+}
+function lerDias(elId){ const el = document.getElementById(elId); if(!el) return [];
+  return [...el.querySelectorAll(".drow")].map(r => ({ d: (r.querySelector(".dd") || {}).value || "", m: (parseInt(r.querySelector(".dh").value) || 0) * 60 + (parseInt(r.querySelector(".dm").value) || 0) })); }
+function maisDia(elId, depois){
+  const el = document.getElementById(elId); if(!el) return; const rows = el.querySelectorAll(".drow"); const ult = rows.length ? (rows[rows.length - 1].querySelector(".dd") || {}).value : "";
+  let nd = today(); if(ult && ult >= today()){ const t = new Date(ult + "T12:00:00"); t.setDate(t.getDate() + 1); nd = iso(t); }
+  const onch = (el.querySelector("input") || {}).getAttribute ? el.querySelector("input").getAttribute("onchange") || "" : "";
+  el.insertAdjacentHTML("beforeend", diasRows([{ d: nd, m: 0 }], onch, false));
+  if(rows.length === 1 && !rows[0].querySelector("button")) rows[0].insertAdjacentHTML("beforeend", `<button type="button" class="btn sm" onclick="this.parentNode.remove();(${onch.replace(/"/g, "&quot;")})" aria-label="Tirar dia">✕</button>`);
+  const novo = el.querySelector(".drow:last-child .dh"); if(novo) novo.focus();
+}
+function onTempo(id){
+  const o = S.ots[id]; if(!o) return;
+  const dias = lerDias("t_dias"); const t = dias.reduce((a, x) => a + x.m, 0);
+  const patch = {};
+  if(o.tempo !== t) patch.tempo = t;
+  if(S.diasCol){ const limpos = dias.filter(x => x.m > 0); const novo = limpos.length > 1 ? limpos : [];
+    if(JSON.stringify(o.dias || []) !== JSON.stringify(novo)) patch.dias = novo;
+    if(limpos.length > 1 && nDesloc(o) < limpos.length) patch.deslocacoes = limpos.length; }
+  if(Object.keys(patch).length) updOt(id, patch, true);
+}
 
 /* ---------- fotografias ---------- */
 const URLS = {}; const URL_EXP = {};
@@ -1667,9 +1695,9 @@ function openOt(id){
       <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
       ${!("extra" in o) ? "" : `<div class="panel"><b>Manutenção extra</b>
         <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
-      <div class="panel"><b>Tempo gasto</b>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="t_h" type="number" min="0" value="${Math.floor((o.tempo||0)/60)}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> h
-        <input id="t_m" type="number" min="0" max="59" value="${(o.tempo||0)%60}" style="width:70px;border:1px solid var(--line);border-radius:10px;padding:8px" onchange="onTempo('${id}')"> min</div></div>
+      <div class="panel"><b>Tempo gasto</b>${nDias(o) > 1 ? ` <span style="color:var(--muted);font-size:13px">· total ${tempoTxt(o)}</span>` : ""}
+        <div id="t_dias" style="margin-top:6px">${diasRows(S.diasCol ? (o.dias && o.dias.length ? o.dias : [{ d: o.concluida || o.data || today(), m: Number(o.tempo) || 0 }]) : [{ d: "", m: Number(o.tempo) || 0 }], `onTempo('${id}')`, !S.diasCol)}</div>
+        ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias', ()=>onTempo('${id}'))">+ Mais um dia</button>` : ""}</div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
@@ -1717,7 +1745,7 @@ function reportText(id){
   if((o.pecas||[]).length){ L.push("", "PEÇAS / MATERIAIS"); o.pecas.forEach(x => L.push("- " + partLabel(x) + " × " + x.q + (IS_ADMIN && lineTotal(x) !== null ? "  " + eur(unitPrice(x)) + "/un = " + eur(lineTotal(x)) : ""))); if(IS_ADMIN) L.push("Total materiais: " + eur(partsTotal(o.pecas))); }
   if(o.soMaterial === true) L.push("", "Só entrega de material.");
   if(o.extra && o.soMaterial !== true) L.push("", "Manutenção extra: " + EXTRAS[o.extra]);
-  if(o.tempo) L.push("", "Tempo gasto: " + Math.floor(o.tempo/60) + " h " + (o.tempo%60) + " min");
+  if(o.tempo) L.push("", "Tempo gasto: " + tempoTxt(o) + (diasTxt(o) ? " (" + diasTxt(o) + ")" : ""));
   if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), (v.tt ? "Deslocação: incluída na tarifa do técnico" : "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl)), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
@@ -1761,7 +1789,7 @@ function reportHtml(o, withPhotos = true){
   const fotos = o.fotos || [];
   const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
   const ck = o.checklist || [], pc = o.pecas || [];
-  const tempo = o.tempo ? `${Math.floor(o.tempo/60)} h ${o.tempo%60} min` : "";
+  const tempo = o.tempo ? tempoTxt(o) + (diasTxt(o) ? " — " + diasTxt(o) : "") : "";
   return `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
@@ -2161,7 +2189,8 @@ function openTrabalho(cid){
       <div class="addpart"><input id="tw_nome" placeholder="Nome do material" style="${matList().length ? "display:none" : ""}"><input id="tw_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addTwLine()"><button class="btn sm" onclick="addTwLine()">Adicionar</button></div>${fatCampos("tw")}</div>
     <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
     <div id="tw_tempo">
-      <div class="panel"><b>Tempo gasto</b><div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><span style="display:flex;gap:6px;align-items:center"><input id="tw_h" type="number" min="0" value="0" style="width:64px;border:1px solid var(--line);border-radius:10px;padding:8px"> h <input id="tw_m" type="number" min="0" max="59" step="5" value="0" style="width:64px;border:1px solid var(--line);border-radius:10px;padding:8px"> min</span>
+      <div class="panel"><b>Tempo gasto</b><div id="tw_dias" style="margin-top:6px">${diasRows([{ d: today(), m: 0 }], "twDiasMud()", !S.diasCol)}</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias', twDiasMud)">+ Mais um dia</button>` : ""}
         <span style="display:flex;gap:6px;align-items:center;margin-left:auto">Deslocações <input id="tw_d" type="number" min="0" value="1" style="width:56px;border:1px solid var(--line);border-radius:10px;padding:8px"></span></div></div>
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
@@ -2178,17 +2207,19 @@ function addTwLine(){
   else { const n = val("tw_nome"); if(!n){ toast("Escolha o material."); return; } twLines.push({ n, q, ...fat }); $("#tw_nome").value = ""; }
   if($("#tw_sel")) $("#tw_sel").value = ""; if($("#tw_nome") && matList().length) $("#tw_nome").style.display = "none"; $("#tw_qtd").value = ""; drawTwLines();
 }
+function twDiasMud(){ const n = lerDias("tw_dias").filter(x => x.m > 0).length; const d = $("#tw_d"); if(d && n > 1 && (parseInt(d.value) || 0) < n) d.value = n; }
 async function saveTrabalho(concluir){
   const cid = val("f_condo"), tit = val("tw_tit");
   if(!cid || !tit){ toast("Escolha o prédio e escreva o que foi feito."); return; }
   if(val("tw_qtd") || (val("tw_sel") && val("tw_sel") !== "__outro") || val("tw_nome")) addTwLine();
   const so = !!($("#tw_so") || {}).checked;
-  const tempo = so ? 0 : (parseInt(val("tw_h")) || 0) * 60 + (parseInt(val("tw_m")) || 0);
+  const twDias = so ? [] : lerDias("tw_dias").filter(x => x.m > 0);
+  const tempo = twDias.reduce((a, x) => a + x.m, 0);
   if(concluir && !so && !tempo && !twLines.length){ toast("Indique o tempo gasto ou o material usado."); return; }
   const exBtn = document.querySelector("#tw_extra button.on"); const extra = so || !exBtn ? "" : exBtn.dataset.k;
   const t = today(), now = nowIso();
   const o = { id: newId(), titulo: tit, condoId: cid, equipId: "", zona: val("tw_zona"), tecnico: ME, tipo: "corretiva", prioridade: "media", estado: concluir ? "concluida" : "curso",
-    data: t, descricao: "", solicitante: "", checklist: [], pecas: twLines.slice(), fotos: [], notas: val("tw_notas"), tempo,
+    data: t, descricao: "", solicitante: "", checklist: [], pecas: twLines.slice(), fotos: [], notas: val("tw_notas"), tempo, ...(S.diasCol && twDias.length > 1 ? { dias: twDias } : {}),
     deslocacoes: so ? 0 : Math.max(0, parseInt(val("tw_d")) || 0), soMaterial: so, criada: t, criadaEm: now, criadoPor: ME, atribuida: t, atribuidaEm: now, atribuidoPor: ME,
     ...(concluir ? { concluida: t, concluidaEm: now, concluidoPor: ME } : {}), ...(Object.values(S.ots).some(x => "extra" in x) || extra ? { extra } : {}) };
   const fotos = twFotos.slice();
@@ -2286,7 +2317,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
