@@ -40,7 +40,7 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias","falta"],
 };
 const NULLABLE = new Set(["origemStock","equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
@@ -149,7 +149,7 @@ async function loadAll(uid){
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
     S.plans = Object.fromEntries(plans.map(r => [r.id, fromRow(r)]));
     S.cdm = Object.fromEntries((await all("condominos")).map(r => [r.id, fromRow(r)]));
-    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r);
+    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r);
     S.notifs = notifs.map(fromRow);
   }catch(e){ console.error(e); mode = "error"; render(); return; }
   const me = S.equipa[ME];
@@ -215,7 +215,7 @@ async function refreshQuiet(){
       sb.from("ordens").select("*").range(0, 9999),
       sb.from("notificacoes").select("*").order("id", { ascending: false }).limit(80),
     ]);
-    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r);
+    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r);
     if(notifs) S.notifs = notifs.map(fromRow);
     render(); autoReadNotifs();
   } finally { refreshing = false; }
@@ -1520,6 +1520,27 @@ function saveOt(id){
 }
 function updOt(id, patch, quiet){ const o = S.ots[id]; if(!o) return; return put("ots", {...o, ...patch}, quiet); }
 function assignOt(id, tec){ updOt(id, {tecnico: tec, atribuida: tec ? today() : "", atribuidaEm: tec ? nowIso() : "", atribuidoPor: tec ? ME : ""}); toast(tec ? "Atribuída a " + nm(tec) + "." : "Ordem sem técnico atribuído."); }
+function svcPanel(o, id, locked){
+  if(locked) return `<div class="panel svc ok"><i class=ico-check></i><b>Serviço terminado</b>${o.concluida ? " em " + fmtDate(o.concluida) : ""}</div>`;
+  const porTerminar = o.estado === "curso" && (nDias(o) > 0 || o.falta || Number(o.tempo) > 0);
+  return `<div class="panel svc"><b>O serviço ficou terminado?</b>
+    <div class="svcbtns"><button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')"><i class=ico-check></i>Sim, está terminado</button>
+    <button class="btn ${porTerminar ? "on" : ""}" onclick="naoTerminado('${id}')">Não, ainda vou terminar</button></div>
+    <div id="svc_falta" style="${porTerminar ? "" : "display:none"}"><label class="f" style="margin:8px 0 0"><span>O que falta fazer</span><input id="t_falta" value="${esc(o.falta || "")}" placeholder="Ex.: falta pintar; volto quinta-feira com a peça" onchange="setFalta('${id}', this.value)"></label>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fica <b>Em curso</b>. Quando voltar, acrescente o dia no tempo gasto e no fim carregue em "Sim, está terminado".</div></div>
+  </div>`;
+}
+function naoTerminado(id){
+  const o = S.ots[id]; if(!o) return;
+  if(o.estado !== "curso") updOt(id, { estado: "curso" }, true);
+  const w = $("#svc_falta"); if(w) w.style.display = ""; const f = $("#t_falta"); if(f) f.focus();
+  document.querySelectorAll(".svcbtns .btn:not(.pri)").forEach(b => b.classList.add("on"));
+  toast("Fica em curso — pode voltar a esta ordem quando continuar.");
+}
+function setFalta(id, v){
+  if(!S.faltaCol){ toast("Falta preparar a base de dados (ficheiro FALTA)."); return; }
+  if(S.ots[id] && (S.ots[id].falta || "") !== v) updOt(id, { falta: v }, true);
+}
 function setEstado(id, estado, fromTop){
   const o = S.ots[id]; if(!o) return;
   if(estado === "concluida"){
@@ -1722,10 +1743,11 @@ function openOt(id){
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
+      ${isExt(o) || !mine ? "" : svcPanel(o, id, locked)}
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px"><i class=ico-check></i>Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
       ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')"><i class=ico-save></i>Guardar e sair</button>` : ""}
-      ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">${isExt(o) ? "Resolvida pela empresa" : "Concluir ordem"}</button>`}</div>`;
+      ${!mine?"":locked?`<button class="btn" onclick="setEstado('${id}','curso')">Reabrir</button>`:isExt(o)?`<button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')">Resolvida pela empresa</button>`:""}</div>`;
   };
   openSheet((numOt(S.ots[id]) ? `<span class="mono" style="color:var(--muted);font-weight:500">${numOt(S.ots[id])}</span> ` : "") + esc(S.ots[id].titulo), draw(), () => {
     const b = $("#sheet .body"); if(!b) return; if(!S.ots[id]){ closeSheet(); return; }
@@ -1761,6 +1783,7 @@ function reportText(id){
   if(o.soMaterial === true) L.push("", "Só entrega de material.");
   if(o.extra && o.soMaterial !== true) L.push("", "Manutenção extra: " + EXTRAS[o.extra]);
   if(o.tempo) L.push("", "Tempo gasto: " + tempoTxt(o) + (diasTxt(o) ? " (" + diasTxt(o) + ")" : ""));
+  if(!isExt(o)) L.push("Serviço: " + (o.estado === "concluida" ? "terminado" : "por terminar" + (o.falta ? " — falta: " + o.falta : "")));
   if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), (v.tt ? "Deslocação: incluída na tarifa do técnico" : "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl)), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
@@ -1813,7 +1836,7 @@ function reportHtml(o, withPhotos = true){
     <h2>Intervenção</h2>
     <table class="prkv">${row("Tipo", TIPOS_OT[o.tipo]||o.tipo)}${row("Prioridade", (PRIOR[o.prioridade]||PRIOR.media)[0])}${row("Pedido por", o.solicitante)}
       ${row("Equipamento", e ? e.nome + (e.local ? " (" + e.local + ")" : "") + ([e.marca,e.modelo].filter(Boolean).length ? " — " + [e.marca,e.modelo].filter(Boolean).join(" ") : "") : "")}${row("Zona / fração", o.zona)}
-      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}${o.soMaterial===true?row("Observação", "Só entrega de material"):""}${o.extra && o.soMaterial!==true?row("Manutenção extra", EXTRAS[o.extra]):""}</table>
+      ${row("Técnico", o.tecnico ? nm(o.tecnico) : "")}${row("Data prevista", o.data ? fmtDate(o.data) : "")}${row("Data de conclusão", o.concluida ? fmtDate(o.concluida) : "")}${row("Tempo gasto", tempo)}${row("Serviço", o.estado === "concluida" ? "Terminado" : "Por terminar" + (o.falta ? " — falta: " + o.falta : ""))}${o.soMaterial===true?row("Observação", "Só entrega de material"):""}${o.extra && o.soMaterial!==true?row("Manutenção extra", EXTRAS[o.extra]):""}</table>
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
     ${pc.length ? (IS_ADMIN
@@ -2332,7 +2355,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
