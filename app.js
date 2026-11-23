@@ -592,7 +592,7 @@ function viewInicio(){
   const late = sortOts(ots.filter(o => o.estado !== "concluida" && o.tecnico && o.data && o.data < t));
   const due = plans.filter(p => planStatus(p)[3] <= 7 && !openOtForPlan(p.id)).sort((a,b) => planNext(a).localeCompare(planNext(b)));
   const tecs = tecnicos().filter(x => x.papel === "tec");
-  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}${meteoAviso()}
+  return `<h2>Painel <span style="display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="openResumos()"><i class=ico-clip></i>Resumos</button><button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button><span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></span></h2>${installBanner()}${pushBanner()}${copiaBanner()}${meteoAviso()}
   <div class="stats">
     ${statCard(porAtribuir.length, "Por atribuir", "techF='-';otFilter='ativas';go('ordens')", true)}
     ${statCard(ots.filter(o=>o.estado==="aberta").length, "Ordens abertas", "techF='';otFilter='aberta';go('ordens')")}
@@ -1606,6 +1606,106 @@ function addPart(id){
 }
 function rmPart(id, i){ updOt(id, {pecas: (S.ots[id].pecas||[]).filter((_,j)=>j!==i)}); }
 let notesTimer = null;
+/* ---------- sugestões automáticas (sem IA, por palavras) ---------- */
+const GRUPOS_OC = [
+  { g: "Infiltrações e águas", re: /infiltr|humid|bolor|água|agua|chuva|caleir|ralo|entup|esgoto|saneamento|tubo de queda|verte|goteira/i, svc: 3, mat: /silicone|veda|desentup/i },
+  { g: "Campainhas e porta", re: /campainh|intercom|video ?porteiro|videop|botoneir|trinco|fechadura|canh[aã]o|n[aã]o abre|porta (de )?entrada|mola/i, svc: 1, mat: /campainh|botoneir|fechadur|canh|trinco/i },
+  { g: "Portões e garagem", re: /port[aã]o|comando|garagem|motor/i, svc: 2, mat: /comando|lubrific|massa/i },
+  { g: "Iluminação", re: /l[aâ]mpad|luz|luzes|ilumin|sensor|temporizador|foco|apag/i, svc: 0, mat: /l[aâ]mpad|foco|led|sensor/i },
+  { g: "Eletricidade", re: /quadro el|disjunt|diferencial|tomada|curto|eletric/i, svc: 4, mat: /tomada|disjunt/i },
+  { g: "Placas e sinalização", re: /placa|sinal|pinos|acr[ií]lic/i, svc: 5, mat: /placa|quadro/i },
+  { g: "Elevadores", re: /elevador/i, svc: -1, mat: null },
+];
+const textoOt = o => (o.titulo || "") + " " + (o.descricao || "");
+const grupoOc = o => { const t = textoOt(o); const x = GRUPOS_OC.find(g => g.re.test(t)); return x ? x.g : "Outros"; };
+const dataOt = o => o.criada || o.data || "";
+function sugestoesPanel(o, id, mine, locked, sm){
+  if(isExt(o) || locked || isEntrega(o)) return "";
+  const t = textoOt(o); const grs = GRUPOS_OC.filter(g => g.re.test(t) && g.svc >= 0);
+  const cid = condoOf(o); const blocos = [];
+  if(mine && !sm && grs.length){
+    const notas = o.notas || ""; const ja = x => notas.split("\n").some(l => l.replace(/^[•\-]\s*/, "").trim() === x);
+    const svcs = [...new Set(grs.flatMap(g => SERVICOS[g.svc][1]))].filter(x => !ja(x)).slice(0, 5);
+    if(svcs.length) blocos.push(`<div class="muted">Serviços prováveis <span>(toque para pôr nas notas)</span></div>${svcs.map(x => `<button type="button" class="schip" onclick="poeServico('t_notas', this)"><span class="t">${esc(x)}</span></button>`).join("")}`);
+  }
+  if(mine && grs.length){
+    const tem = new Set((o.pecas || []).map(x => x.c));
+    const mats = matList().filter(m => !tem.has(m.codigo) && grs.some(g => g.mat && g.mat.test(m.nome + " " + m.codigo))).slice(0, 4);
+    if(mats.length) blocos.push(`<div class="muted">Material habitual neste tipo de serviço</div>${mats.map(m => `<button type="button" class="schip" onclick="sugMat('${id}','${esc(m.codigo)}')">+ ${esc(m.nome)}</button>`).join("")}`);
+  }
+  const linhas = [];
+  if(grs.length && cid){
+    const desde = addDays(today(), -90); const g0 = grupoOc(o);
+    const iguais = Object.values(S.ots).filter(x => x.id !== id && condoOf(x) === cid && dataOt(x) >= desde && grupoOc(x) === g0).length;
+    if(iguais) linhas.push(`<div class="srow"><span>${iguais} ${iguais === 1 ? "ocorrência" : "ocorrências"} de ${esc(g0.toLowerCase())} neste prédio nos últimos 90 dias</span><button type="button" class="btn sm" onclick="verPredio('${cid}')">Ver</button></div>`);
+  }
+  if(cid){
+    const dig = (o.descricao || "").replace(/\D/g, " ");
+    const cd = Object.values(S.cdm).find(k => k.condoId === cid && ((k.telefone && splitTels(k.telefone).some(tl => tl.replace(/\D/g, "").length >= 9 && dig.includes(tl.replace(/\D/g, "")))) || (k.nome && k.nome.length > 4 && (o.descricao || "").toLowerCase().includes(k.nome.toLowerCase()))));
+    if(cd && cd.telefone) linhas.push(`<div class="srow"><span>Condómino registado: ${esc(cd.nome)}${cd.fracao ? " (" + esc(cd.fracao) + ")" : ""}</span><a class="btn sm" href="tel:${esc(splitTels(cd.telefone)[0] || cd.telefone)}">Ligar</a></div>`);
+  }
+  if(linhas.length) blocos.push(`<div class="muted">Também neste prédio</div>${linhas.join("")}`);
+  const adm = [];
+  if(IS_ADMIN && !o.tecnico){ const r = respZona(cid); if(r) adm.push(`<div class="srow"><span>Técnico da zona ${esc(localidade(S.condos[cid]))}: <b>${esc(nm(r))}</b></span><button type="button" class="btn sm pri" onclick="assignOt('${id}','${r}')">Atribuir</button></div>`); }
+  if(IS_ADMIN && o.prioridade !== "alta" && o.prioridade !== "urgente"){
+    const desde = addDays(today(), -90); const rep = cid && Object.values(S.ots).filter(x => x.id !== id && condoOf(x) === cid && dataOt(x) >= desde && grupoOc(x) === grupoOc(o) && grupoOc(o) !== "Outros").length;
+    const urg = /urgent|n[aã]o abre|n[aã]o fecha|cai [aá]gua|inunda|sem luz|perigo|fuga/i.test(t);
+    const inf = grupoOc(o) === "Infiltrações e águas";
+    if(urg || (inf && rep)) adm.push(`<div class="srow"><span>Prioridade sugerida: <b>Alta</b> <span class="muted">(${urg ? "pela descrição" : "infiltração repetida"})</span></span><button type="button" class="btn sm" onclick="updOt('${id}',{prioridade:'alta'});toast('Prioridade alta.')">Aplicar</button></div>`);
+  }
+  if(adm.length) blocos.push(`<div class="muted">Para o escritório</div>${adm.join("")}`);
+  if(!blocos.length) return "";
+  return `<div class="panel sugp"><div class="sh"><i class=ico-check></i>Sugestões para esta ordem <span>— pela descrição</span></div>${blocos.join("")}</div>`;
+}
+function sugMat(id, codigo){ const o = S.ots[id], m = S.mat[codigo]; if(!o || !m) return; updOt(id, { pecas: [...(o.pecas || []), { n: m.nome, c: m.codigo, q: 1 }] }); toast(m.nome + " acrescentado (1). Ajuste a quantidade se for preciso."); }
+function verPredio(cid){ closeSheet(); condoF = cid; otFilter = "todas"; q = ""; go("ordens"); }
+
+/* ---------- resumos (só escritório) ---------- */
+let resPer = "mes";
+function periodoRes(k){
+  const t = today(), y = +t.slice(0, 4), m = +t.slice(5, 7);
+  const pad = n => String(n).padStart(2, "0");
+  if(k === "mes") return [`${y}-${pad(m)}-01`, t, "Este mês"];
+  if(k === "ant"){ const yy = m === 1 ? y - 1 : y, mm = m === 1 ? 12 : m - 1; const fim = iso(new Date(y, m - 1, 0)); return [`${yy}-${pad(mm)}-01`, fim, "Mês passado"]; }
+  if(k === "90") return [addDays(t, -90), t, "Últimos 90 dias"];
+  return [`${y}-01-01`, t, "Este ano"];
+}
+function openResumos(k){
+  if(!IS_ADMIN) return; if(k) resPer = k;
+  const [ini, fim] = periodoRes(resPer); const dentro = d => d && d >= ini && d <= fim;
+  const all = Object.values(S.ots).filter(o => !isEntrega(o));
+  const fech = all.filter(o => o.estado === "concluida" && dentro(o.concluida));
+  const dias = fech.map(o => { const a = dataOt(o); return a ? (Date.parse(o.concluida) - Date.parse(a)) / 86400e3 : null; }).filter(x => x !== null && x >= 0);
+  const media = dias.length ? (dias.reduce((a, b) => a + b, 0) / dias.length) : null;
+  const velhas = all.filter(o => o.estado !== "concluida" && !isExt(o) && dataOt(o) && dataOt(o) <= addDays(today(), -30)).length;
+  const unid = fech.reduce((a, o) => a + (o.pecas || []).reduce((b, x) => b + (Number(x.q) || 0), 0), 0);
+  const conta = (arr, f) => { const m = {}; for(const o of arr){ const k = f(o); if(k) m[k] = (m[k] || 0) + 1; } return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const porTec = conta(fech, o => o.tecnico); const maxT = porTec.length ? porTec[0][1] : 1;
+  const criadas = all.filter(o => dentro(dataOt(o)));
+  const porTipo = conta(criadas, grupoOc);
+  const porPredio = conta(criadas, condoOf).slice(0, 8);
+  let cars = "";
+  if(VE_STOCK() && S.stk && S.stk.ok){
+    const m = {}; for(const mv of S.stk.mov){ if(mv.tipo !== "servico" || !dentro(mv.data)) continue; const l = mv.origem; const v = vendaMov(mv); (m[l] = m[l] || { q: 0, e: 0 }); m[l].q += Number(mv.qtd) || 0; m[l].e += v.venda || 0; }
+    const rows = Object.entries(m).sort((a, b) => b[1].e - a[1].e);
+    cars = `<h3>Material aplicado por local <span class="muted" style="text-transform:none;letter-spacing:0">(só para si)</span></h3><div class="panel">${rows.map(([l, v]) => `<div class="srow"><span>${esc(locNome(l))}</span><span class="mono">${String(v.q).replace(".", ",")} un · ${eur(v.e)}</span></div>`).join("") || '<div class="muted">Sem material aplicado neste período.</div>'}</div>`;
+  }
+  const lin = (rows, f, clique) => rows.length ? rows.map(([k, n]) => `<div class="srow" ${clique ? `style="cursor:pointer" onclick="${clique(k)}"` : ""}><span>${f(k)}</span><span class="mono">${n}</span></div>`).join("") : '<div class="muted">Sem dados neste período.</div>';
+  openSheet("Resumos", `
+    <div class="seg" style="margin-bottom:12px">${[["mes","Este mês"],["ant","Mês passado"],["90","90 dias"],["ano","Ano"]].map(([k, l]) => `<button class="${resPer === k ? "on" : ""}" onclick="openResumos('${k}')">${l}</button>`).join("")}</div>
+    <div class="stats">
+      <div class="stat"><b>${fech.length}</b><span>Ordens fechadas</span></div>
+      <div class="stat"><b>${media === null ? "—" : media.toFixed(1).replace(".", ",") + " dias"}</b><span>Tempo médio até fechar</span></div>
+      <div class="stat"><b style="${velhas ? "color:var(--red)" : ""}">${velhas}</b><span>Abertas há +30 dias</span></div>
+      <div class="stat"><b>${String(unid).replace(".", ",")}</b><span>Unidades de material</span></div>
+    </div>
+    <h3>Ordens fechadas por técnico</h3><div class="panel">${porTec.length ? porTec.map(([k, n]) => `<div class="srow" style="cursor:pointer" onclick="closeSheet();techF='${k}';otFilter='todas';go('ordens')"><span>${esc(nm(k))}</span><span class="mono">${n}</span></div><div class="rbar"><i style="width:${Math.round(n / maxT * 100)}%"></i></div>`).join("") : '<div class="muted">Nenhuma ordem fechada neste período.</div>'}</div>
+    <h3>Tipo de ocorrência <span class="muted" style="text-transform:none;letter-spacing:0">(abertas no período)</span></h3><div class="panel">${lin(porTipo, esc)}</div>
+    <h3>Prédios com mais ocorrências</h3><div class="panel">${lin(porPredio, k => esc(cName(k)), k => `verPredio('${k}')`)}</div>
+    ${cars}
+    <div class="muted" style="margin-top:6px">Toque num técnico ou num prédio para ver essas ordens.</div>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Fechar</button></div>`);
+}
 /* ---------- serviços pré-definidos (toca e o texto vai para as notas) ---------- */
 const SERVICOS = [
   ["Iluminação", ["Reparação ou substituição de sensor de movimento / temporizador", "Reparação ou substituição de interruptor", "Verificação de iluminação de emergência"]],
@@ -1785,6 +1885,7 @@ function openOt(id){
       </dl>${o.descricao?`<div style="margin-top:10px;white-space:pre-wrap;font-size:14px">${esc(o.descricao)}</div>`:""}
       ${c.notas?`<details style="margin-top:10px;font-size:14px"><summary style="cursor:pointer;color:var(--muted)">Acessos do condomínio</summary><div style="white-space:pre-wrap;margin-top:4px">${esc(c.notas)}</div></details>`:""}</div>
       ${isExt(o) ? extPanel(o, id, mine && !locked) : ""}
+      ${sugestoesPanel(o, id, mine, locked, sm)}
       ${ck.length?`<div class="panel"><div style="display:flex;justify-content:space-between"><b>Checklist</b><span class="mono" style="color:var(--muted)">${done}/${ck.length}</span></div>
         <div class="progress"><i style="width:${done/ck.length*100}%"></i></div>
         ${ck.map((x,i)=>`<div class="chk ${x.ok?"ok":""}" onclick="toggleCk('${id}',${i})"><span class="box">${x.ok?"✓":""}</span><span class="lbl">${esc(x.t)}</span></div>`).join("")}</div>`:""}
@@ -2429,7 +2530,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
