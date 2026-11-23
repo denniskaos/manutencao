@@ -357,12 +357,13 @@ const nDias = o => Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0).l
 const diaTxt = x => (x.d ? fmtDate(x.d).slice(0, 5) + " " : "") + (x.i && x.f ? x.i + "–" + x.f : fmtTempo(x.m));
 const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
 const diasTxt = o => { const l = Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0) : []; return l.length > 1 || l.some(x => x.i) ? l.map(diaTxt).join(" · ") : ""; };
+const smOt = o => !!(S.equipa[o.tecnico] || {}).soRegistaMaterial;
 const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
   if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
   const mat = r2(partsTotal(o.pecas || []));
   const horas = (Number(o.tempo) || 0) / 60;
-  const so = o.soMaterial === true;
+  const so = o.soMaterial === true || smOt(o);   // técnicos que só registam material: mão de obra vem noutra folha
   const tt = S.tarTec[o.tecnico]; const min = Number(o.tempo) || 0;
   // tarifa própria: 1.ª hora só uma vez por ordem, mesmo com vários dias na mesma folha
   const mo = so ? 0 : tt ? r2(min > 0 ? tt.hora1 + Math.max(0, min - 60) / 60 * tt.hora : 0) : r2(horas * S.tarifas.hora);
@@ -762,7 +763,7 @@ function viewEquipa(){
     const mine = ots.filter(o => o.tecnico === x.id);
     const pend = mine.filter(o => o.estado !== "concluida").length;
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
-    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}${x.oculto?' <span class="badge" style="background:#e8eef7;color:var(--blue)"><i class=ico-lock></i>Só eu vejo</span>':""}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
+    return `<div class="item" onclick="openPessoa('${x.id}')" style="${x.ativo?"":"opacity:.55"}"><div class="bar ${x.papel==="admin"?"amber":"blue"}"></div><div class="main"><div class="t">${esc(x.nome)}${x.id===ME?" (eu)":""}${x.ativo?"":' <span class="badge">Desativado</span>'}${x.oculto?' <span class="badge" style="background:#e8eef7;color:var(--blue)"><i class=ico-lock></i>Só eu vejo</span>':""}${x.soRegistaMaterial?' <span class="badge">Só material</span>':""}</div><div class="s">${x.papel==="admin"?"Administrativo":"Técnico"} · ${esc(x.email||"")}</div><div class="s"><i class=ico-mobile></i>${x.telefone?esc(x.telefone):'<span class="warnTxt">sem número</span>'} · <i class=ico-sign></i>${x.assinatura?"assinatura guardada":'<span class="warnTxt">sem assinatura</span>'}</div>${x.papel==="tec"?`<div class="s">${pend} pendente${pend===1?"":"s"} · ${mes} concluída${mes===1?"":"s"} este mês</div>`:""}</div></div>`;
   }).join("")}</div>
   ${VE_STOCK() ? `<div class="actions" style="margin:8px 0 4px"><button class="btn" onclick="verAcessos()"><i class=ico-lock></i>Acessos à app (só eu vejo)</button></div>` : ""}
   ${VE_STOCK() ? precosPanel() : ""}
@@ -1100,6 +1101,7 @@ function openPessoa(id){
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
+      ${!self && IS_ADMIN && x.papel !== "admin" ? `<button class="btn" onclick="setSoRegMat('${id}', ${!x.soRegistaMaterial})">${x.soRegistaMaterial ? "Registar tudo (tempo, notas, fotos)" : "Só regista material"}</button>` : ""}
       ${!self && VE_STOCK() ? `<button class="btn" onclick="setOculto('${id}', ${!x.oculto})"><i class=ico-lock></i>${x.oculto ? "Mostrar a todos" : "Conta de teste (só eu vejo)"}</button>` : ""}
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="${x.ativo ? `openDesativar('${id}')` : `armDelete(this,()=>setAtivo('${id}',true))`}">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
 }
@@ -1159,6 +1161,13 @@ async function desativarPassar(id){
   await setAtivo(id, false);
   const partes = [d.ots.length && d.ots.length + (d.ots.length === 1 ? " ordem" : " ordens"), d.pls.length && d.pls.length + (d.pls.length === 1 ? " plano" : " planos"), d.zonas.length && "zona " + d.zonas.join(", "), d.cars.length && "carrinha"].filter(Boolean);
   if(partes.length) setTimeout(() => toast("Conta desativada. " + partes.join(", ") + (para ? " → " + nm(para) : " ficaram por atribuir") + "."), 900);
+}
+async function setSoRegMat(id, v){
+  if(!IS_ADMIN) return;
+  const { error } = await sb.from("perfis").update({ so_regista_material: v }).eq("id", id);
+  if(error){ if(/so_regista_material/.test(error.message || "")) toast("Falta preparar a base de dados (ficheiro SO_MATERIAL)."); else writeErr(error); return; }
+  S.equipa[id] = { ...S.equipa[id], soRegistaMaterial: v }; closeSheet(); render();
+  toast(v ? nm(id) + " passa a registar só o material." : nm(id) + " volta a registar tudo.");
 }
 async function setOculto(id, oculto){
   if(!VE_STOCK()) return;
@@ -1724,6 +1733,7 @@ function openOt(id){
     const c = S.condos[condoOf(o)] || {};
     const locked = o.estado === "concluida";
     const mine = IS_ADMIN || o.tecnico === ME;
+    const sm = smOt(o);   // técnico que só regista material
     const fotos = o.fotos || [];
     if(fotos.length) ensureUrls(fotos).then(ch => { if(ch && sheetRefresh) sheetRefresh(); });
     const maps = c.morada ? ` <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px">mapa ↗</a>` : "";
@@ -1747,13 +1757,14 @@ function openOt(id){
       ${ck.length?`<div class="panel"><div style="display:flex;justify-content:space-between"><b>Checklist</b><span class="mono" style="color:var(--muted)">${done}/${ck.length}</span></div>
         <div class="progress"><i style="width:${done/ck.length*100}%"></i></div>
         ${ck.map((x,i)=>`<div class="chk ${x.ok?"ok":""}" onclick="toggleCk('${id}',${i})"><span class="box">${x.ok?"✓":""}</span><span class="lbl">${esc(x.t)}</span></div>`).join("")}</div>`:""}
-      ${isExt(o) ? "" : `<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center"><b>Fotografias</b>
+      ${isExt(o) || sm ? "" : `<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center"><b>Fotografias</b>
         <label class="btn sm upl"><i class=ico-camera></i>Adicionar<input type="file" accept="image/*" multiple onchange="addFotos('${id}', this)"></label></div>
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>`}
       ${isExt(o) ? "" : `<div class="panel"><b>Peças / materiais usados</b>
         <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""} ${fatTag(x)}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
         ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div>${fatCampos("p")}</div>
+      ${sm ? (IS_ADMIN ? `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só material — mão de obra noutra folha)</span><div class="parts" style="margin-top:6px"><div class="part"><span class="n">Materiais</span><span class="mono">${eur(valores(o).mat)}</span></div></div></div>` : "") : `
       <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
       ${!("extra" in o) ? "" : `<div class="panel"><b>Manutenção extra</b>
         <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
@@ -1768,9 +1779,10 @@ function openOt(id){
           ${v.ex ? `<div class="part"><span class="n">${EXTRAS[v.exTipo]}</span><span class="mono">${eur(v.ex)}</span></div>` : ""}
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
-      <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
-      ${!isExt(o) && mine && !locked ? servicosPicker("t_notas") : ""}
-      ${isExt(o) || !mine ? "" : svcPanel(o, id, locked)}
+      `}
+      ${sm ? "" : `<label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>`}
+      ${!isExt(o) && !sm && mine && !locked ? servicosPicker("t_notas") : ""}
+      ${isExt(o) || !mine ? "" : sm ? (locked ? svcPanel(o, id, true) : `<div class="panel svc"><button class="btn pri" id="btnConc" style="width:100%;justify-content:center" onclick="setEstado('${id}','concluida')"><i class=ico-check></i>Concluir — material registado</button></div>`) : svcPanel(o, id, locked)}
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px"><i class=ico-check></i>Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
       ${mine && !locked ? `<button class="btn" onclick="saveClose('${id}')"><i class=ico-save></i>Guardar e sair</button>` : ""}
@@ -2244,15 +2256,16 @@ async function saveMov(tipo){
 let twLines = [], twFotos = [];
 function openTrabalho(cid){
   twLines = []; twFotos = [];
+  const smMe = !IS_ADMIN && !!(S.equipa[ME] || {}).soRegistaMaterial;   // só regista material
   const temExtra = !Object.keys(S.ots).length || Object.values(S.ots).some(o => "extra" in o);
   openSheet("Novo trabalho", `
     ${condoPicker(cid || "")}
-    <label class="f"><span>O que foi feito *</span><input id="tw_tit" placeholder="Ex.: Manutenção geral, troca de lâmpadas no 3º"></label>
+    <label class="f"><span>O que foi feito${smMe ? "" : " *"}</span><input id="tw_tit" placeholder="${smMe ? "Opcional — ex.: material aplicado no hall" : "Ex.: Manutenção geral, troca de lâmpadas no 3º"}"></label>
     <label class="f"><span>Zona / fração</span><input id="tw_zona" placeholder="Ex.: escadas, garagem -1, 2º esq."></label>
     <div class="panel"><b>Material usado</b><div id="tw_lines" class="parts" style="margin-top:6px"></div>
       ${matList().length ? `<select id="tw_sel" class="search" style="margin:8px 0 0" onchange="document.getElementById('tw_nome').style.display=this.value==='__outro'?'':'none'"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
       <div class="addpart"><input id="tw_nome" placeholder="Nome do material" style="${matList().length ? "display:none" : ""}"><input id="tw_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addTwLine()"><button class="btn sm" onclick="addTwLine()">Adicionar</button></div>${fatCampos("tw")}</div>
-    <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
+${smMe ? "" : `    <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
     <div id="tw_tempo">
       <div class="panel"><b>Tempo gasto</b><div id="tw_dias" style="margin-top:6px">${diasRows([{ d: today(), m: 0 }], "twDiasMud()", !S.diasCol)}</div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias')">+ Mais um dia</button>` : ""}
@@ -2262,6 +2275,7 @@ function openTrabalho(cid){
     <label class="f"><span>Notas</span><textarea id="tw_notas" placeholder="Detalhes do que foi feito, o que fica por fazer…"></textarea></label>
     ${servicosPicker("tw_notas")}
     <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer"><i class=ico-camera></i>Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
+`}
     <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)"><i class=ico-save></i>Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)"><i class=ico-check></i>Concluir trabalho</button></div>`);
   drawTwLines();
 }
@@ -2275,7 +2289,8 @@ function addTwLine(){
 }
 function twDiasMud(){ const n = lerDias("tw_dias").filter(x => x.m > 0).length; const d = $("#tw_d"); if(d && n > 1 && (parseInt(d.value) || 0) < n) d.value = n; }
 async function saveTrabalho(concluir){
-  const cid = val("f_condo"), tit = val("tw_tit");
+  const smMe = !IS_ADMIN && !!(S.equipa[ME] || {}).soRegistaMaterial;
+  const cid = val("f_condo"), tit = val("tw_tit") || (smMe ? "Material aplicado" : "");
   if(!cid || !tit){ toast("Escolha o prédio e escreva o que foi feito."); return; }
   if(val("tw_qtd") || (val("tw_sel") && val("tw_sel") !== "__outro") || val("tw_nome")) addTwLine();
   const so = !!($("#tw_so") || {}).checked;
@@ -2383,7 +2398,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
