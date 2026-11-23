@@ -140,6 +140,13 @@ table.stk tr:hover td{background:#fbf8f2}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.dark{background:var(--head);border-color:var(--head);color:#fff}
 .btn.danger{color:var(--red)}
+details.svcpick{margin:-4px 0 12px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:0 12px}
+details.svcpick summary{cursor:pointer;padding:10px 0;font-weight:600;color:var(--accent);list-style:none}
+details.svcpick summary::-webkit-details-marker{display:none}
+details.svcpick summary span{font-weight:400;color:var(--muted);font-size:12.5px;margin-left:6px}
+details.svcpick .sg{margin-bottom:10px}details.svcpick .sgt{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+details.svcpick .chips{display:flex;flex-wrap:wrap;gap:6px}details.svcpick .chip{white-space:normal;text-align:left;line-height:1.25;padding:7px 10px}
+details.svcpick .chip.on{background:#fbefe2;border-color:var(--accent);color:var(--ink)}
 .panel.svc .svcbtns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.panel.svc .svcbtns .btn{flex:1 1 140px;justify-content:center}
 .panel.svc .svcbtns .btn.on{background:#fbefe2;border-color:var(--accent);color:var(--ink)}
 .panel.svc.ok{background:#eaf6ee;border-color:#bfe3cb;color:#1f6b3a}
@@ -316,7 +323,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=89"></script>
-<script type="module" src="app.js?v=89"></script>
+<script src="config.js?v=90"></script>
+<script type="module" src="app.js?v=90"></script>
 </body>
 </html>

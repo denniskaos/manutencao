@@ -1571,6 +1571,26 @@ function addPart(id){
 }
 function rmPart(id, i){ updOt(id, {pecas: (S.ots[id].pecas||[]).filter((_,j)=>j!==i)}); }
 let notesTimer = null;
+/* ---------- serviços pré-definidos (toca e o texto vai para as notas) ---------- */
+const SERVICOS = [
+  ["Iluminação", ["Reparação ou substituição de sensor de movimento / temporizador", "Reparação ou substituição de interruptor", "Verificação de iluminação de emergência"]],
+  ["Campainhas e porta de entrada", ["Reparação de campainha / intercomunicador / videoporteiro", "Ajuste ou substituição de botoneira", "Reparação do trinco elétrico (a porta não abre)", "Afinação de mola / fecho da porta de entrada", "Substituição de fechadura ou canhão"]],
+  ["Portões e garagem", ["Reparação ou afinação de portão de garagem", "Programação de comandos", "Verificação do motor e dos fins de curso", "Lubrificação de calhas e dobradiças"]],
+  ["Infiltrações e águas", ["Verificação de infiltração", "Limpeza de caleiros", "Desentupimento de ralos", "Desentupimento de tubos de queda", "Aplicação de silicone / veda-juntas em janelas ou terraços", "Verificação da cobertura / telhado"]],
+  ["Eletricidade", ["Verificação do quadro elétrico das zonas comuns", "Rearme de disjuntor / diferencial", "Substituição de tomada"]],
+  ["Limpeza e conservação", ["Aplicação de placas (animais, estacionamento) e quadros acrílicos", "Colocação de pinos ou sinalização no estacionamento", "Limpeza de garagem / arrumos comuns"]],
+  ["Visitas", ["Acompanhamento de empresa externa", "Visita para orçamento / avaliação"]],
+];
+function servicosPicker(alvo){
+  return `<details class="svcpick"><summary>+ Serviços frequentes <span>toque para acrescentar às notas</span></summary>
+    ${SERVICOS.map(([g, l]) => `<div class="sg"><div class="sgt">${esc(g)}</div><div class="chips">${l.map(t => `<button type="button" class="chip" onclick="poeServico('${alvo}', this)">${esc(t)}</button>`).join("")}</div></div>`).join("")}</details>`;
+}
+function poeServico(alvo, btn){
+  const ta = document.getElementById(alvo); if(!ta) return; const t = btn.textContent.trim();
+  const linhas = ta.value.split("\n"); if(linhas.some(l => l.replace(/^[•\-]\s*/, "").trim() === t)){ toast("Já está nas notas."); return; }
+  ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + "• " + t;
+  ta.dispatchEvent(new Event("input")); btn.classList.add("on");
+}
 function onNotes(id, v){ clearTimeout(notesTimer); notesTimer = setTimeout(() => { if(S.ots[id] && S.ots[id].notas !== v) updOt(id, {notas: v}, true); }, 900); }
 function setExtra(id, k){ updOt(id, { extra: k }); toast(k ? EXTRAS[k] + " registada." : "Sem manutenção extra."); }
 function saveClose(id){
@@ -1749,6 +1769,7 @@ function openOt(id){
           <div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:700"><span class="n">Total</span><span class="mono">${eur(v.total)}</span></div>
         </div></div>`; })() : ""}`}
       <label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>
+      ${!isExt(o) && mine && !locked ? servicosPicker("t_notas") : ""}
       ${isExt(o) || !mine ? "" : svcPanel(o, id, locked)}
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px"><i class=ico-check></i>Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
@@ -2239,6 +2260,7 @@ function openTrabalho(cid){
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
     <label class="f"><span>Notas</span><textarea id="tw_notas" placeholder="Detalhes do que foi feito, o que fica por fazer…"></textarea></label>
+    ${servicosPicker("tw_notas")}
     <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer"><i class=ico-camera></i>Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
     <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)"><i class=ico-save></i>Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)"><i class=ico-check></i>Concluir trabalho</button></div>`);
   drawTwLines();
@@ -2361,7 +2383,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
