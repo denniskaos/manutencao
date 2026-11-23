@@ -129,47 +129,66 @@ async function start(){
   else { mode = "login"; render(); }
 }
 
+// Cópia local dos dados: a app abre logo com o que tinha da última vez e atualiza por trás.
+const SNAP_KEYS = ["equipa","condos","equip","plans","ots","cdm","mat","notifs","precos","tarifas","tarTec","empresa","zonas","zonasOk","matGrupoCol","diasCol","faltaCol","stk"];
+function guardarSnap(){ try{ const o = { v: 1, t: Date.now() }; for(const k of SNAP_KEYS) o[k] = S[k]; localStorage.setItem("snap:" + ME, JSON.stringify(o)); }catch(_){ try{ localStorage.removeItem("snap:" + ME); }catch(__){} } }
+function lerSnap(uid){ try{ const o = JSON.parse(localStorage.getItem("snap:" + uid) || "null"); if(!o || o.v !== 1 || Date.now() - o.t > 7 * 86400e3) return null; return o; }catch(_){ return null; } }
+let snapTimer = null; const snapDepois = () => { clearTimeout(snapTimer); snapTimer = setTimeout(guardarSnap, 3000); };
+
 async function loadAll(uid){
-  ME = uid; mode = "loading"; render();
+  ME = uid;
+  const snap = lerSnap(uid);
+  if(snap && snap.equipa && snap.equipa[uid] && snap.equipa[uid].ativo){
+    for(const k of SNAP_KEYS) if(snap[k] !== undefined) S[k] = snap[k];
+    IS_ADMIN = S.equipa[uid].papel === "admin"; mode = "ok"; render();
+    const sy = $("#sync"); if(sy) sy.textContent = "A atualizar…";
+  } else { mode = "loading"; render(); }
   const all = async (table, q = x => x) => {
     const out = []; let from = 0;
     for(;;){ const { data, error } = await q(sb.from(table).select("*")).range(from, from + 999); if(error) throw error; out.push(...data); if(data.length < 1000) break; from += 1000; }
     return out;
   };
+  const opc = p => p.then(r => r, () => ({ data: null, error: true }));
   try{
-    const [perfis, condos, equip, plans, ots, notifs] = await Promise.all([
+    // tudo em paralelo (antes era em fila, um pedido de cada vez)
+    const [perfis, condos, equip, plans, ots, notifs, matsR, cdms, prR, tfR, ttR, emR, zrR] = await Promise.all([
       all("perfis"), all("condominios"), all("equipamentos"), all("planos"), all("ordens"),
       sb.from("notificacoes").select("*").order("id", { ascending: false }).limit(80).then(r => r.data || []),
+      opc(sb.from("materiais").select("*")), all("condominos"),
+      opc(sb.from("materiais_precos").select("*")), opc(sb.from("tarifas").select("*").eq("id", 1).maybeSingle()), opc(sb.from("tarifas_tecnico").select("*")),
+      opc(sb.from("empresa").select("*").maybeSingle()), opc(sb.from("zonas_resp").select("*")),
     ]);
-    const { data: mats } = await sb.from("materiais").select("*");
+    const mats = matsR.data;
     S.mat = Object.fromEntries((mats || []).map(m => [m.codigo, m]));
     S.matGrupoCol = (mats || []).some(m => "grupo" in m);
     S.equipa = Object.fromEntries(perfis.map(p => [p.id, fromRow(p)]));
     S.condos = Object.fromEntries(condos.map(r => [r.id, fromRow(r)]));
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
     S.plans = Object.fromEntries(plans.map(r => [r.id, fromRow(r)]));
-    S.cdm = Object.fromEntries((await all("condominos")).map(r => [r.id, fromRow(r)]));
+    S.cdm = Object.fromEntries(cdms.map(r => [r.id, fromRow(r)]));
     S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r);
     S.notifs = notifs.map(fromRow);
-  }catch(e){ console.error(e); mode = "error"; render(); return; }
+    S.empresa = (emR && emR.data) || {};
+    S.zonasOk = !!(zrR && !zrR.error); S.zonas = Object.fromEntries(((zrR && zrR.data) || []).map(r => [r.zona, r.tecnico]));
+    window.__adm = { pr: prR.data, tf: tfR.data, tt: ttR.data };
+  }catch(e){ console.error(e); if(mode !== "ok"){ mode = "error"; render(); } else { const sy = $("#sync"); if(sy) sy.textContent = "Sem ligação"; } return; }
   const me = S.equipa[ME];
   if(!me){ mode = "noprofile"; render(); return; }
   if(!me.ativo){ mode = "inactive"; render(); return; }
   IS_ADMIN = me.papel === "admin";
   if(IS_ADMIN){
-    const [{ data: pr }, { data: tf }] = await Promise.all([sb.from("materiais_precos").select("*"), sb.from("tarifas").select("*").eq("id", 1).maybeSingle()]);
+    const { pr, tf } = window.__adm;
     S.precos = Object.fromEntries((pr || []).map(x => [x.codigo, Number(x.preco)]));
     if(tf) S.tarifas = { deslocacao: Number(tf.deslocacao) || 0, hora: Number(tf.hora) || 0, extraA: tf.extra_a != null ? Number(tf.extra_a) : 50, extraE: tf.extra_e != null ? Number(tf.extra_e) : 75, novas: "extra_a" in tf };
-    const { data: tt } = await sb.from("tarifas_tecnico").select("*");
+    const tt = window.__adm.tt;
     S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
-  try{ const { data: em } = await sb.from("empresa").select("*").maybeSingle(); S.empresa = em || {}; }catch(_){ S.empresa = {}; }
-  try{ const { data: zr, error: ze } = await sb.from("zonas_resp").select("*"); S.zonasOk = !ze; S.zonas = Object.fromEntries((zr || []).map(r => [r.zona, r.tecnico])); }catch(_){ S.zonas = {}; S.zonasOk = false; }
   await loadStock();
+  const sy = $("#sync"); if(sy && sy.textContent === "A atualizar…") sy.textContent = "";
   loadMeteo(); setInterval(() => loadMeteo(), 30 * 60 * 1000);
   mode = "ok";
   subscribeRealtime();
-  render();
+  render(); guardarSnap();
   registarAcesso();
   autoReadNotifs();
   const q = new URLSearchParams(location.search).get("ordem");
@@ -177,6 +196,8 @@ async function loadAll(uid){
   checkPushState();
 }
 
+let rdTimer = null;
+function renderDepois(){ clearTimeout(rdTimer); rdTimer = setTimeout(() => { const y = scroller().scrollTop; render(); scroller().scrollTop = y; snapDepois(); }, 250); }
 function subscribeRealtime(){
   const ch = sb.channel("dados");
   const map = { perfis: "equipa", condominios: "condos", equipamentos: "equip", planos: "plans", ordens: "ots", condominos: "cdm" };
@@ -184,7 +205,7 @@ function subscribeRealtime(){
     ch.on("postgres_changes", { event: "*", schema: "public", table }, p => {
       if(p.eventType === "DELETE"){ if(p.old && p.old.id) delete S[col][p.old.id]; }
       else { const o = fromRow(p.new); S[col][o.id] = o; if(col === "equipa" && o.id === ME){ IS_ADMIN = o.papel === "admin"; if(!o.ativo) location.reload(); } }
-      render();
+      renderDepois();
     });
   }
   if(VE_STOCK()) for(const t of ["stock_mov", "stock_locais", "stock_artigos"]) ch.on("postgres_changes", { event: "*", schema: "public", table: t }, stockChanged);
@@ -238,6 +259,7 @@ async function doLogin(){
   if(error){ btn.disabled = false; btn.textContent = "Entrar"; toast(/invalid/i.test(error.message) ? "E-mail ou palavra-passe errados." : /banned/i.test(error.message) ? "Esta conta está desativada." : error.message); }
 }
 async function logout(){
+  try{ localStorage.removeItem("snap:" + ME); }catch(_){}
   try{ const reg = await navigator.serviceWorker?.ready; const s = await reg?.pushManager?.getSubscription(); if(s){ await sb.from("push_subscricoes").delete().eq("endpoint", s.endpoint); await s.unsubscribe(); } }catch(e){}
   await sb.auth.signOut(); location.reload();
 }
@@ -907,6 +929,7 @@ function empresaLogo(inp){
   img.src = url;
 }
 function render(){
+  if(mode === "ok" && ME) snapDepois();
   renderNav(); renderWho();
   { const nv = document.getElementById("navver"); if(nv && VERSAO) nv.textContent = "Versão " + VERSAO; }
   if(mode === "login"){ $("#app").innerHTML = viewLogin(); return; }
