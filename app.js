@@ -55,7 +55,10 @@ const extraVal = k => k === "A" ? S.tarifas.extraA : k === "E" ? S.tarifas.extra
 let ME = null, IS_ADMIN = false, mode = "loading";
 const chains = {};
 
+// Depois de atribuída a alguém, a nota "Responsável no Gecond: …" já não é precisa
+const semNotaGecond = n => (n || "").replace(/^\s*Responsável no Gecond:[^\n]*\n?/m, "").replace(/^\n+/, "").replace(/\n+$/, "");
 async function put(col, obj, quiet){
+  if(col === "ots" && obj.tecnico && /Responsável no Gecond:/.test(obj.notas || "")) obj = { ...obj, notas: semNotaGecond(obj.notas) };
   S[col][obj.id] = obj; if(!quiet) render();
   const table = TABLES[col]; const key = col + "/" + obj.id;
   const row = toRow(table, obj);
