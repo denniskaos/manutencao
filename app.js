@@ -1613,12 +1613,17 @@ const SERVICOS = [
   ["Limpeza e conservação", ["Aplicação de placas (animais, estacionamento) e quadros acrílicos", "Colocação de pinos ou sinalização no estacionamento", "Limpeza de garagem / arrumos comuns"]],
   ["Visitas", ["Acompanhamento de empresa externa", "Visita para orçamento / avaliação"]],
 ];
-function servicosPicker(alvo){
-  return `<details class="svcpick"><summary>+ Serviços frequentes <span>toque para acrescentar às notas</span></summary>
-    ${SERVICOS.map(([g, l]) => `<div class="sg"><div class="sgt">${esc(g)}</div><div class="chips">${l.map(t => `<button type="button" class="chip" onclick="poeServico('${alvo}', this)">${esc(t)}</button>`).join("")}</div></div>`).join("")}</details>`;
+const svcTabSel = {};
+function servicosPicker(alvo, notas){
+  const sel = svcTabSel[alvo] || 0; const tem = t => (notas || "").split("\n").some(l => l.replace(/^[•\-]\s*/, "").trim() === t);
+  return `<div class="svcpick2" data-alvo="${alvo}"><div class="sph">Serviços frequentes <span>toque para pôr nas notas</span></div>
+    <div class="sptabs">${SERVICOS.map(([g], i) => `<button type="button" class="${i === sel ? "on" : ""}" onclick="svcTab(this, ${i})">${esc(g.replace(" e porta de entrada", "").replace(" e garagem", "").replace(" e águas", "").replace(" e conservação", ""))}</button>`).join("")}</div>
+    ${SERVICOS.map(([g, l], i) => `<div class="splist" data-i="${i}" style="${i !== sel ? "display:none" : ""}">${l.map(t => `<button type="button" class="spit${tem(t) ? " on" : ""}" onclick="poeServico('${alvo}', this)"><span class="t">${esc(t)}</span><span class="mais">+</span></button>`).join("")}</div>`).join("")}
+  </div>`;
 }
+function svcTab(btn, i){ const w = btn.closest(".svcpick2"); svcTabSel[w.dataset.alvo] = i; w.querySelectorAll(".sptabs button").forEach(b => b.classList.toggle("on", b === btn)); w.querySelectorAll(".splist").forEach(l => l.style.display = l.dataset.i == i ? "" : "none"); }
 function poeServico(alvo, btn){
-  const ta = document.getElementById(alvo); if(!ta) return; const t = btn.textContent.trim();
+  const ta = document.getElementById(alvo); if(!ta) return; const t = (btn.querySelector(".t") || btn).textContent.trim();
   const linhas = ta.value.split("\n"); if(linhas.some(l => l.replace(/^[•\-]\s*/, "").trim() === t)){ toast("Já está nas notas."); return; }
   ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + "• " + t;
   ta.dispatchEvent(new Event("input")); btn.classList.add("on");
@@ -1804,7 +1809,7 @@ function openOt(id){
         </div></div>`; })() : ""}`}
       `}
       ${sm ? "" : `<label class="f"><span>${isExt(o) ? "Ponto de situação / notas" : "Notas do técnico"}</span><textarea id="t_notas" oninput="onNotes('${id}',this.value)" placeholder="${isExt(o) ? "Ex.: liguei à empresa, técnico vem amanhã de manhã…" : "O que foi encontrado, o que foi feito, o que fica por fazer…"}">${esc(o.notas)}</textarea></label>`}
-      ${!isExt(o) && !sm && mine && !locked ? servicosPicker("t_notas") : ""}
+      ${!isExt(o) && !sm && mine && !locked ? servicosPicker("t_notas", o.notas) : ""}
       ${isExt(o) || !mine ? "" : sm ? (locked ? svcPanel(o, id, true) : `<div class="panel svc"><button class="btn pri" id="btnConc" style="width:100%;justify-content:center" onclick="setEstado('${id}','concluida')"><i class=ico-check></i>Concluir — material registado</button></div>`) : svcPanel(o, id, locked)}
       ${!IS_ADMIN && locked ? (() => { const to = o.atribuidoPor || o.criadoPor; const tel = phoneOf(to); return tel && to !== ME ? `<div class="panel" style="background:var(--green-bg);border-color:#bfe0cb;font-size:14px"><i class=ico-check></i>Concluída. O escritório já recebeu uma notificação. ${waBtn(tel, waConcl(o), "Avisar também por WhatsApp")}</div>` : ""; })() : ""}
       <div class="actions">${canEditOt(o)?`<button class="btn" onclick="editOt('${id}')">Editar</button>`:""}<button class="btn" onclick="showReport('${id}')">Relatório</button>${(IS_ADMIN||locked) && !isExt(o)?`<button class="btn${isEntrega(o)?" pri":""}" onclick="printOt('${id}')"><i class=ico-print></i>Imprimir${isEntrega(o)?" guia":""}</button>`:""}<span class="sp"></span>
@@ -2421,7 +2426,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
