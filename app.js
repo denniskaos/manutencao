@@ -1329,12 +1329,12 @@ function openCondo(id, startSub){
     if(sub === "cdm"){
       const list = cdms.filter(x => !cq || hit([x.fracao, x.nome, x.telefone, x.email, x.notas].join(" "), cq));
       content = `${cdms.length > 8 ? `<input class="search" placeholder="Procurar condómino, fração ou telefone…" value="${esc(cq)}" oninput="condoCq(this.value)">` : ""}
-      <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" ${IS_ADMIN?`onclick="editCdm('${x.id}')"`:""} style="cursor:${IS_ADMIN?"pointer":"default"}"><div class="bar"></div><div class="main">
+      <div class="list" id="cdmList">${list.length ? list.map(x => `<div class="item" onclick="editCdm('${x.id}')" style="cursor:pointer"><div class="bar"></div><div class="main">
         <div class="t">${x.fracao?`<span class="mono" style="color:var(--accent);margin-right:6px">${esc(x.fracao)}</span>`:""}${esc(x.nome)}</div>
         ${x.telefone && !splitTels(x.telefone).length ? `<div class="s mono">${esc(x.telefone)}</div>` : ""}${x.email?`<div class="s">${esc(x.email)}</div>`:""}${x.notas?`<div class="s" style="white-space:pre-wrap">${esc(x.notas)}</div>`:""}
         <div class="actions" style="margin-top:6px" onclick="event.stopPropagation()">${x.telefone ? telBtns(x.telefone) : ""}${x.email?`<a class="btn sm" href="mailto:${esc(x.email)}"><i class=ico-mail></i>E-mail</a>`:""}</div>
-      </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados." + (IS_ADMIN ? "" : " Peça ao escritório para os acrescentar."))}</div>
-      ${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`:""}`;
+      </div></div>`).join("") : emptyBox(cdms.length ? "Nenhum condómino encontrado." : "Ainda sem condóminos registados. Carregue em + Condómino para acrescentar.")}</div>
+      <div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`;
     }
     if(sub === "equip") content = `<div class="list">${eqs.length ? eqs.map(e => `<div class="item" onclick="openEquip('${e.id}')"><div class="bar"></div><div class="main"><div class="t">${esc(e.nome)}</div><div class="s">${esc([e.tipo, e.local].filter(Boolean).join(" · "))}</div></div></div>`).join("") : emptyBox("Sem equipamentos registados.")}</div>${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editEquip(null,'${id}')">+ Equipamento</button></div>`:""}`;
     const maps = c.morada ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
@@ -1360,8 +1360,9 @@ function openCondo(id, startSub){
 }
 
 /* ---------- condóminos ---------- */
-function editCdm(id, condoId){
-  if(!IS_ADMIN) return;
+let cdmVolta = null;   // de onde se abriu (ex.: uma ordem) para voltar lá depois de guardar
+function editCdm(id, condoId, voltaOt){
+  cdmVolta = voltaOt || null;
   const x = id ? S.cdm[id] : { condoId };
   openSheet(id ? "Editar condómino" : "Novo condómino", `
     <p style="margin-top:0;color:var(--muted);font-size:14px">${esc(cName(x.condoId))}</p>
@@ -1370,12 +1371,17 @@ function editCdm(id, condoId){
     <label class="f"><span>Nome *</span><input id="k_nome" value="${esc(x.nome)}"></label>
     <label class="f"><span>E-mail</span><input id="k_mail" type="email" value="${esc(x.email)}"></label>
     <label class="f"><span>Notas</span><textarea id="k_notas" placeholder="Proprietário / inquilino, melhor hora para contactar…">${esc(x.notas)}</textarea></label>
-    <div class="actions">${id?`<button class="btn danger" onclick="armDelete(this,()=>{del('cdm','${id}');openCondo('${x.condoId}','cdm');toast('Condómino apagado.')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="openCondo('${x.condoId}','cdm')">Cancelar</button><button class="btn pri" onclick="saveCdm('${id||""}','${x.condoId}')">Guardar</button></div>`);
+    ${!id && !IS_ADMIN ? `<div style="font-size:12.5px;color:var(--muted);margin:-4px 0 8px">Fica guardado na lista de condóminos deste prédio, com o seu nome como quem o acrescentou.</div>` : ""}
+    <div class="actions">${id && IS_ADMIN?`<button class="btn danger" onclick="armDelete(this,()=>{del('cdm','${id}');openCondo('${x.condoId}','cdm');toast('Condómino apagado.')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="cdmVoltar('${x.condoId}')">Cancelar</button><button class="btn pri" onclick="saveCdm('${id||""}','${x.condoId}')">Guardar</button></div>`);
 }
 function saveCdm(id, condoId){
   const nome = val("k_nome"); if(!nome){ toast("Indique o nome."); return; }
-  const x = { ...(id ? S.cdm[id] : {}), id: id || newId(), condoId, fracao: val("k_fr"), nome, telefone: val("k_tel"), email: val("k_mail"), notas: val("k_notas") };
-  put("cdm", x); toast("Condómino guardado."); openCondo(condoId, "cdm");
+  let notas = val("k_notas");
+  if(!id) notas = (notas ? notas + "\n" : "") + "Acrescentado por " + nm(ME) + " em " + fmtDate(today());
+  const x = { ...(id ? S.cdm[id] : {}), id: id || newId(), condoId, fracao: val("k_fr"), nome, telefone: val("k_tel"), email: val("k_mail"), notas };
+  put("cdm", x); toast("Condómino guardado."); cdmVoltar(condoId);
+}
+function cdmVoltar(condoId){ const o = cdmVolta; cdmVolta = null; if(o && S.ots[o]) openOt(o); else openCondo(condoId, "cdm");
 }
 
 /* ---------- equipamentos ---------- */
@@ -1707,7 +1713,7 @@ function openOt(id){
       ${IS_ADMIN?`<div class="panel"><label class="f" style="margin:0"><span>${isExt(o) ? "Responsável" : "Atribuída a"}</span><select onchange="assignOt('${id}', this.value)">${techOptions(o.tecnico)}</select></label>
         ${o.tecnico && o.tecnico !== ME && !locked && phoneOf(o.tecnico) ? `<div style="margin-top:10px">${waBtn(phoneOf(o.tecnico), waOrdem(o), "Enviar também por WhatsApp")}</div>` : ""}</div>`:""}
       <div class="panel"><dl class="kv">
-        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap"><i class=ico-users></i>condóminos</a>` : ""}</dd>
+        <dt>Condomínio</dt><dd><a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}')" style="color:inherit">${esc(cName(condoOf(o)))}</a>${Object.values(S.cdm).some(x => x.condoId === condoOf(o)) ? ` <a href="#" onclick="event.preventDefault();openCondo('${condoOf(o)}','cdm')" style="color:var(--blue);font-size:13px;white-space:nowrap"><i class=ico-users></i>condóminos</a>` : ""}${condoOf(o) ? ` <a href="#" onclick="event.preventDefault();editCdm(null,'${condoOf(o)}','${id}')" style="color:var(--blue);font-size:13px;white-space:nowrap">+ condómino</a>` : ""}</dd>
         ${c.morada?`<dt>Morada</dt><dd>${esc(c.morada)}${maps}</dd>`:""}
         ${o.equipId && S.equip[o.equipId]?`<dt>Equipamento</dt><dd><a href="#" onclick="event.preventDefault();openEquip('${o.equipId}')" style="color:inherit">${esc(eqName(o.equipId))}</a></dd>`:""}
         ${o.zona?`<dt>Zona</dt><dd>${esc(o.zona)}</dd>`:""}
@@ -2355,7 +2361,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
