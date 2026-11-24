@@ -382,10 +382,13 @@ const nDesloc = o => (o.deslocacoes === "" || o.deslocacoes === undefined || o.d
 const r2 = v => Math.round(v * 100) / 100;
 // Tempo por dias: o.dias = [{d:"AAAA-MM-DD", m:minutos}]. Sem dias, conta como um só dia com o.tempo.
 const diasDe = o => Array.isArray(o.dias) && o.dias.length ? o.dias : (Number(o.tempo) ? [{ d: o.concluida || o.data || "", m: Number(o.tempo) }] : []);
-const nDias = o => Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0).length : 0;
+const nDias = o => Array.isArray(o.dias) ? new Set(o.dias.filter(x => Number(x.m) > 0).map(x => x.d || "")).size : 0;
 const diaTxt = x => (x.d ? fmtDate(x.d).slice(0, 5) + " " : "") + (x.i && x.f ? x.i + "–" + x.f : fmtTempo(x.m));
 const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
-const diasTxt = o => { const l = Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0) : []; return l.length > 1 || l.some(x => x.i) ? l.map(diaTxt).join(" · ") : ""; };
+const diasTxt = o => { const l = Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0) : []; if(!(l.length > 1 || l.some(x => x.i))) return "";
+  // vários períodos no mesmo dia ficam juntos: "18/11 09:00–12:00 e 14:00–17:00"
+  const g = []; for(const x of l){ const u = g[g.length - 1]; if(u && u.d === (x.d || "")) u.p.push(x); else g.push({ d: x.d || "", p: [x] }); }
+  return g.map(z => (z.d ? fmtDate(z.d).slice(0, 5) + " " : "") + z.p.map(x => x.i && x.f ? x.i + "–" + x.f : fmtTempo(x.m)).join(" e ")).join(" · "); };
 const smOt = o => !!(S.equipa[o.tecnico] || {}).soRegistaMaterial;
 // texto para documentos que saem para fora: só o tempo, nunca o preço/hora
 const moTxtFora = o => tempoTxt(o);
@@ -1805,9 +1808,9 @@ function correrOnch(r){ const f = r.dataset.onch; if(f) (new Function(f.replace(
 function lerDias(elId){ const el = document.getElementById(elId); if(!el) return [];
   return [...el.querySelectorAll(".drow")].map(r => { const o = { d: (r.querySelector(".dd") || {}).value || "", m: (parseInt(r.querySelector(".dh").value) || 0) * 60 + (parseInt(r.querySelector(".dm").value) || 0) };
     const a = r.querySelector(".di").value, b = r.querySelector(".df").value; if(a && b){ o.i = a; o.f = b; } return o; }); }
-function maisDia(elId){
+function maisDia(elId, mesmo){
   const el = document.getElementById(elId); if(!el) return; const rows = el.querySelectorAll(".drow"); const ult = rows.length ? (rows[rows.length - 1].querySelector(".dd") || {}).value : "";
-  let nd = today(); if(ult && ult >= today()){ const t = new Date(ult + "T12:00:00"); t.setDate(t.getDate() + 1); nd = iso(t); }
+  let nd = today(); if(mesmo && ult) nd = ult; else if(ult && ult >= today()){ const t = new Date(ult + "T12:00:00"); t.setDate(t.getDate() + 1); nd = iso(t); }
   const onch = rows.length ? (rows[0].dataset.onch || "").replace(/&quot;/g, '"') : "";
   el.insertAdjacentHTML("beforeend", diasRows([{ d: nd, m: 0 }], onch, false, true));
   if(rows.length === 1 && !rows[0].querySelector("button")) rows[0].querySelector(".dl1").insertAdjacentHTML("beforeend", `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>`);
@@ -1832,7 +1835,7 @@ function onTempo(id){
   if(o.tempo !== t) patch.tempo = t;
   if(S.diasCol){ const limpos = dias.filter(x => x.m > 0); const novo = limpos.length > 1 || limpos.some(x => x.i) ? limpos : [];
     if(normDias(o.dias) !== normDias(novo)) patch.dias = novo;
-    if(limpos.length > 1 && nDesloc(o) < limpos.length) patch.deslocacoes = limpos.length; }
+    const nd = new Set(limpos.map(x => x.d || "")).size; if(nd > 1 && nDesloc(o) < nd) patch.deslocacoes = nd; }
   if(Object.keys(patch).length) updOt(id, patch, true);
 }
 
@@ -1949,7 +1952,7 @@ function openOt(id){
         <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
       <div class="panel"><b>Tempo gasto</b>${nDias(o) > 1 ? ` <span style="color:var(--muted);font-size:13px">· total ${tempoTxt(o)}</span>` : ""}
         <div id="t_dias" style="margin-top:6px">${diasRows(S.diasCol ? diasParaMostrar(o, id) : [{ d: "", m: Number(o.tempo) || 0 }], `onTempo('${id}')`, !S.diasCol)}</div>
-        ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias')">+ Mais um dia</button>` : ""}</div>
+        ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias', true)">+ Mais horas no mesmo dia</button> <button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias')">+ Mais um dia</button>` : ""}</div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
           <div class="part"><span class="n">Materiais</span><span class="mono">${eur(v.mat)}</span></div>
@@ -2454,7 +2457,7 @@ function openTrabalho(cid){
 ${smMe ? "" : `    <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
     <div id="tw_tempo">
       <div class="panel"><b>Tempo gasto</b><div id="tw_dias" style="margin-top:6px">${diasRows([{ d: today(), m: 0 }], "twDiasMud()", !S.diasCol)}</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias')">+ Mais um dia</button>` : ""}
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${S.diasCol ? `<button type="button" class="btn sm" onclick="maisDia('tw_dias', true)">+ Mais horas no mesmo dia</button><button type="button" class="btn sm" onclick="maisDia('tw_dias')">+ Mais um dia</button>` : ""}
         <span style="display:flex;gap:6px;align-items:center;margin-left:auto">Deslocações <input id="tw_d" type="number" min="0" value="1" style="width:56px;border:1px solid var(--line);border-radius:10px;padding:8px"></span></div></div>
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
