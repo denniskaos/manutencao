@@ -1784,30 +1784,39 @@ function saveClose(id){
 }
 function diasRows(lista, onch, semData, comX){
   const x_ = onch.replace(/"/g, "&quot;");
-  return lista.map(x => `<div class="drow" data-onch="${x_}">
+  return lista.map(x => `<div class="drow" data-onch="${x_}"${x.sa ? ' data-sa="1"' : ""}>
     <div class="dl1">${semData ? "" : `<input type="date" class="dd" value="${esc(x.d || today())}" onchange="${onch}">`}<input type="number" min="0" class="dh" value="${Math.floor((x.m || 0) / 60)}" onchange="limparHoras(this);${onch}"><span class="dlab">h</span><input type="number" min="0" max="59" step="5" class="dm" value="${(x.m || 0) % 60}" onchange="limparHoras(this);${onch}"><span class="dlab">min</span>${!semData && (comX || lista.length > 1) ? `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>` : ""}</div>
     <div class="dl2"><span class="dlab">ou das</span><input type="time" class="di" value="${esc(x.i || "")}" onchange="horaDia(this)"><span class="dlab">às</span><input type="time" class="df" value="${esc(x.f || "")}" onchange="horaDia(this)"></div><div class="dalm">${almTxt(x)}</div></div>`).join("");
 }
-const almTxt = x => { if(!x.i || !x.f) return ""; const [h1, m1] = x.i.split(":").map(Number), [h2, m2] = x.f.split(":").map(Number); const ini = h1 * 60 + m1; let fim = h2 * 60 + m2; if(fim < ini) fim += 1440; const a = Math.max(0, Math.min(fim, 780) - Math.max(ini, 720)); return a > 0 && fim - ini - a > 0 ? (a === 60 ? "1 h de almoço descontada" : a + " min de almoço descontados") : ""; };
+// Hora de almoço: só se desconta 1 h quando um único período apanha todo o intervalo das 12h00 às 14h00
+// (almoçou algures lá dentro, à hora que for). Quem parte o dia em dois períodos (ex.: 9–13 e 14–18) não tem desconto.
+// Em cada linha pode-se dizer "não almoçou" (fica guardado como sa = sem almoço).
+const ALM_INI = 12 * 60, ALM_FIM = 14 * 60, ALM_MIN = 60;
+const minsHora = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const apanhaAlmoco = (i, f) => { if(!i || !f) return false; const a = minsHora(i); let b = minsHora(f); if(b < a) b += 1440; return a <= ALM_INI && b >= ALM_FIM && b - a > ALM_MIN; };
+const almHtml = (i, f, sa) => !apanhaAlmoco(i, f) ? "" : sa
+  ? `Sem desconto de almoço · <a href="#" onclick="event.preventDefault();togAlmoco(this)">descontar 1 h de almoço</a>`
+  : `1 h de almoço descontada · <a href="#" onclick="event.preventDefault();togAlmoco(this)">não almoçou</a>`;
+const almTxt = x => almHtml(x.i, x.f, x.sa);
 // Das X às Y → calcula as horas e minutos dessa linha
 function horaDia(el){
   const r = el.closest(".drow"); const a = r.querySelector(".di").value, b = r.querySelector(".df").value;
   let nota = "";
   if(a && b){ const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number); const ini = h1 * 60 + m1; let fim = h2 * 60 + m2; if(fim < ini) fim += 24 * 60;
-    let t = fim - ini;
-    // hora de almoço: desconta a parte entre as 12h00 e as 13h00 que caia dentro do intervalo
-    const alm = Math.max(0, Math.min(fim, 13 * 60) - Math.max(ini, 12 * 60));
-    if(alm > 0 && t - alm > 0){ t -= alm; nota = alm === 60 ? "1 h de almoço descontada" : alm + " min de almoço descontados"; }
+    let t = fim - ini; const sa = r.dataset.sa === "1";
+    if(apanhaAlmoco(a, b) && !sa) t -= ALM_MIN;
+    nota = almHtml(a, b, sa);
     r.querySelector(".dh").value = Math.floor(t / 60); r.querySelector(".dm").value = t % 60; }
-  let n = r.querySelector(".dalm"); if(!n){ n = document.createElement("div"); n.className = "dalm"; r.appendChild(n); } n.textContent = nota;
+  let n = r.querySelector(".dalm"); if(!n){ n = document.createElement("div"); n.className = "dalm"; r.appendChild(n); } n.innerHTML = nota;
   correrOnch(r);
 }
+function togAlmoco(a){ const r = a.closest(".drow"); r.dataset.sa = r.dataset.sa === "1" ? "" : "1"; horaDia(r.querySelector(".df")); }
 function limparHoras(el){ const r = el.closest(".drow"); r.querySelector(".di").value = ""; r.querySelector(".df").value = ""; const n = r.querySelector(".dalm"); if(n) n.textContent = ""; }
 function tirarDia(btn){ const r = btn.closest(".drow"); const box = r.parentNode; const f = r.dataset.onch; r.remove(); if(box.querySelectorAll(".drow").length === 1){ const b = box.querySelector(".drow button"); if(b) b.remove(); } if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
 function correrOnch(r){ const f = r.dataset.onch; if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
 function lerDias(elId){ const el = document.getElementById(elId); if(!el) return [];
   return [...el.querySelectorAll(".drow")].map(r => { const o = { d: (r.querySelector(".dd") || {}).value || "", m: (parseInt(r.querySelector(".dh").value) || 0) * 60 + (parseInt(r.querySelector(".dm").value) || 0) };
-    const a = r.querySelector(".di").value, b = r.querySelector(".df").value; if(a && b){ o.i = a; o.f = b; } return o; }); }
+    const a = r.querySelector(".di").value, b = r.querySelector(".df").value; if(a && b){ o.i = a; o.f = b; if(r.dataset.sa === "1" && apanhaAlmoco(a, b)) o.sa = true; } return o; }); }
 function maisDia(elId, mesmo){
   const el = document.getElementById(elId); if(!el) return; const rows = el.querySelectorAll(".drow"); const ult = rows.length ? (rows[rows.length - 1].querySelector(".dd") || {}).value : "";
   let nd = today(); if(mesmo && ult) nd = ult; else if(ult && ult >= today()){ const t = new Date(ult + "T12:00:00"); t.setDate(t.getDate() + 1); nd = iso(t); }
@@ -1819,7 +1828,7 @@ function maisDia(elId, mesmo){
 }
 // rascunho das linhas de dias que ainda não têm horas (para não desaparecerem quando o ecrã se redesenha)
 let DIAS_RASC = {};
-const normDias = a => JSON.stringify((a || []).map(x => [x.d || "", Number(x.m) || 0, x.i || "", x.f || ""]));
+const normDias = a => JSON.stringify((a || []).map(x => [x.d || "", Number(x.m) || 0, x.i || "", x.f || "", !!x.sa]));
 function diasParaMostrar(o, id){
   const base = o.dias && o.dias.length ? o.dias : [{ d: o.concluida || o.data || today(), m: Number(o.tempo) || 0 }];
   const r = DIAS_RASC[id]; if(!r) return base;
@@ -2587,7 +2596,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
