@@ -2131,11 +2131,18 @@ function guiaHtml(o){
     <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
   return via("Via do escritório");
 }
-async function printOt(id){
+async function printOt(id, fotos){
   const o = S.ots[id]; if(!o) return;
   if(isEntrega(o)){ await printHtml(guiaHtml(o)); return; }
-  if((o.fotos||[]).length){ toast("A preparar fotografias…"); try{ await ensureUrls(o.fotos); }catch(_){} }
-  await printHtml(reportHtml(o));
+  const n = (o.fotos || []).length;
+  if(n && fotos === undefined){
+    openSheet("Imprimir ficha", `<p style="margin-top:0">Esta ordem tem ${n} ${n === 1 ? "fotografia" : "fotografias"}. Quer imprimi-las na ficha?</p>
+      <div class="actions"><button class="btn" onclick="openOt('${id}')">Cancelar</button><span class="sp"></span><button class="btn" onclick="printOt('${id}', false)"><i class=ico-print></i>Sem fotografias</button><button class="btn pri" onclick="printOt('${id}', true)"><i class=ico-print></i>Com fotografias</button></div>`);
+    return;
+  }
+  if(n && fotos){ toast("A preparar fotografias…"); try{ await ensureUrls(o.fotos); }catch(_){} }
+  await printHtml(reportHtml(o, n ? !!fotos : true));
+  if(n) openOt(id);
 }
 
 /* ---------- impressão por período (semana), agrupada por técnico ---------- */
