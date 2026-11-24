@@ -822,7 +822,7 @@ const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v
 const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
 const prLogo = () => (S.empresa || {}).logo ? `<img src="${esc(S.empresa.logo)}" alt="">` : "";
 // caixa em branco para apontar à mão o(s) nº(s) de lançamento no Gecond
-const gecondBox = () => `<div class="gecb"><span>Nº(s) de lançamento Gecond</span><div></div></div>`;
+const gecondBox = () => `<br><span class="gecl">Lançamento Gecond: <span></span></span>`;
 const prMarca = () => { const e = S.empresa || {}; return e.nome ? " · " + esc(e.nome) + (e.subtitulo ? " — " + esc(e.subtitulo) : "") : ""; };
 const eurIn = (val, on, ph = "0,00") => `<span class="eurin"><input inputmode="decimal" value="${val}" placeholder="${ph}" onchange="${on}"><span>€</span></span>`;
 const numPt = v => v === undefined || v === null || v === "" || isNaN(Number(v)) ? "" : Number(v).toFixed(2).replace(".", ",");
@@ -2057,8 +2057,7 @@ function extReportHtml(o, withPhotos){
   const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura;
   return `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Ficha de Acompanhamento de Avaria</h1><div>${esc(o.titulo)}</div></div></div>
-      <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${o.estado === "concluida" ? "Resolvida" : esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Resolvida: ${fmtDate(o.concluida)}`:""}</div></div>
-    ${gecondBox()}
+      <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${o.estado === "concluida" ? "Resolvida" : esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Resolvida: ${fmtDate(o.concluida)}`:""}${gecondBox()}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}</table>
     <h2>Avaria</h2>
@@ -2081,8 +2080,7 @@ function reportHtml(o, withPhotos = true){
   const tempo = o.tempo ? tempoTxt(o) + (diasTxt(o) ? " — " + diasTxt(o) : "") : "";
   return `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
-      <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
-    ${gecondBox()}
+      <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}${gecondBox()}</div></div>
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}${row("Administração", c.admin)}</table>
     <h2>Intervenção</h2>
@@ -2172,8 +2170,7 @@ function guiaHtml(o){
   const hora = o.criadaEm ? new Date(o.criadaEm).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "";
   const via = v => `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Guia de Entrega de Material</h1></div></div>
-      <div class="meta">Guia nº <b>${esc(numOt(o) || "—")}</b><br>Data: <b>${fmtDate(o.data || o.criada)}</b>${hora ? " · " + hora : ""}</div></div>
-    ${gecondBox()}
+      <div class="meta">Guia nº <b>${esc(numOt(o) || "—")}</b><br>Data: <b>${fmtDate(o.data || o.criada)}</b>${hora ? " · " + hora : ""}${gecondBox()}</div></div>
     <h2>Destino</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
     <h2>Entrega</h2>
