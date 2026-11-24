@@ -163,7 +163,7 @@ async function loadAll(uid){
     ]);
     const mats = matsR.data;
     S.mat = Object.fromEntries((mats || []).map(m => [m.codigo, m]));
-    S.matGrupoCol = (mats || []).some(m => "grupo" in m);
+    S.matGrupoCol = (mats || []).some(m => "grupo" in m); S.matFornCol = (mats || []).some(m => "fornecedor" in m);
     S.equipa = Object.fromEntries(perfis.map(p => [p.id, fromRow(p)]));
     S.condos = Object.fromEntries(condos.map(r => [r.id, fromRow(r)]));
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
@@ -357,10 +357,14 @@ const tecnicos = () => pessoas().filter(p => p.ativo);
 const matList = () => Object.values(S.mat).filter(m => m.ativo !== false).sort((a,b) => (a.ordem||0) - (b.ordem||0) || a.nome.localeCompare(b.nome, "pt"));
 const partLabel = x => x.n + (x.c ? " (" + x.c + ")" : "");
 // Material comprado com fatura (não sai do stock — aviso só para o dono): campos f (true) e fn (nº da fatura)
-const fatTag = x => x.f ? `<span class="badge fat"><i class=ico-clip></i>Fatura${x.fn ? " " + esc(x.fn) : ""}</span>` : "";
+const fatTag = x => x.f ? `<span class="badge fat"><i class=ico-clip></i>Fatura${x.fn ? " " + esc(x.fn) : ""}${x.fo ? " · " + esc(x.fo) : ""}</span>` : "";
 const fatTxt = x => x.f ? " (comprado c/ fatura" + (x.fn ? " nº " + x.fn : "") + ")" : "";
-const fatCampos = pre => `<label class="fatchk"><input type="checkbox" id="${pre}_fat" onchange="document.getElementById('${pre}_fatn').style.display=this.checked?'':'none'"> Comprado com fatura${VE_STOCK() ? ` <span style="color:var(--muted);font-size:12.5px">(não sai do stock)</span>` : ""}</label><input id="${pre}_fatn" class="fatn" placeholder="Nº da fatura (opcional)" style="display:none">`;
-const lerFat = pre => { const c = $("#" + pre + "_fat"); if(!c || !c.checked) return {}; const n = val(pre + "_fatn"); c.checked = false; const i = $("#" + pre + "_fatn"); if(i){ i.value = ""; i.style.display = "none"; } return n ? { f: true, fn: n } : { f: true }; };
+const fatTxtCurto = x => x.f ? " (fatura" + (x.fn ? " nº " + x.fn : "") + ")" : "";
+const fatCampos = pre => `<label class="fatchk"><input type="checkbox" id="${pre}_fat" onchange="document.getElementById('${pre}_fatn').style.display=this.checked?'':'none'"> Comprado com fatura${VE_STOCK() ? ` <span style="color:var(--muted);font-size:12.5px">(não sai do stock)</span>` : ""}</label><span id="${pre}_fatn" class="fatn2" style="display:none"><input id="${pre}_fatf" class="fatn" placeholder="Comprado em (fornecedor)" list="dl_mforn"><input id="${pre}_fatnn" class="fatn" placeholder="Nº da fatura (opcional)">${dlForn()}</span>`;
+const lerFat = pre => { const c = $("#" + pre + "_fat"); if(!c || !c.checked) return {}; const n = val(pre + "_fatnn"), fo = val(pre + "_fatf"); c.checked = false; const i = $("#" + pre + "_fatn"); if(i) i.style.display = "none"; for(const k of ["_fatnn", "_fatf"]){ const e = $("#" + pre + k); if(e) e.value = ""; } return { f: true, ...(n ? { fn: n } : {}), ...(fo ? { fo } : {}) }; };
+// fornecedor de uma linha de material: o da fatura, senão o definido no material
+const fornLinha = x => (x && (x.fo || (x.c && (S.mat[x.c] || {}).fornecedor))) || "";
+const dlForn = () => document.getElementById("dl_mforn") ? "" : `<datalist id="dl_mforn">${[...new Set(Object.values(S.mat).map(m => m.fornecedor).filter(Boolean))].sort().map(f => `<option value="${esc(f)}">`).join("")}</datalist>`;
 function pendingPart(){
   const sel = document.getElementById("p_sel"); const qt = parseFloat(val("p_qtd")) || 1;
   if(sel && sel.value && sel.value !== "__outro"){ const m = S.mat[sel.value]; if(m) return {n: m.nome, c: m.codigo, q: qt, ...lerFat("p")}; }
@@ -836,12 +840,14 @@ function precosPanel(){
       const aberto = matOpen.has(g);
       return `<div class="mgrp${aberto ? " on" : ""}" onclick="togMat(${esc(JSON.stringify(g))})"><b>${aberto ? "▾" : "▸"} ${esc(nome)}</b><span>${l.length} ${l.length === 1 ? "material" : "materiais"}${aberto ? "" : " · " + faixa}</span></div>
       ${aberto ? l.map(m => `<div class="mrow"><div class="mn" onclick="matSel=matSel==='${esc(m.codigo)}'?'':'${esc(m.codigo)}';render()"><div class="t">${esc(m.nome)}</div>${matSel === m.codigo ? `<div class="c">${esc(m.codigo)} · <button class="mx" onclick="event.stopPropagation();armMat(this,'${esc(m.codigo)}')">Retirar</button></div>
-          <select class="mgsel" onclick="event.stopPropagation()" onchange="mudarGrupo('${esc(m.codigo)}', this.value)"><option value="">Mudar de grupo…</option>${gruposMat().filter(x => x !== g).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}<option value="__novo">+ Novo grupo…</option></select>` : ""}</div>${eurIn(numPt(S.precos[m.codigo]), `setPreco('${esc(m.codigo)}', this.value)`)}</div>`).join("") : ""}`; }).join("")}
+          <select class="mgsel" onclick="event.stopPropagation()" onchange="mudarGrupo('${esc(m.codigo)}', this.value)"><option value="">Mudar de grupo…</option>${gruposMat().filter(x => x !== g).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}<option value="__novo">+ Novo grupo…</option></select>${S.matFornCol ? `<input class="mforn" placeholder="Fornecedor (ex.: Leroy Merlin)" list="dl_mforn" value="${esc(m.fornecedor || "")}" onclick="event.stopPropagation()" onchange="mudarForn('${esc(m.codigo)}', this.value)">` : ""}` : (m.fornecedor ? `<div class="c">${esc(m.fornecedor)}</div>` : "")}</div>${eurIn(numPt(S.precos[m.codigo]), `setPreco('${esc(m.codigo)}', this.value)`)}</div>`).join("") : ""}`; }).join("")}
+    ${dlForn()}
     <details class="mnovo"><summary>+ Novo material</summary>
       <div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Código</span><input id="m_cod" placeholder="Ex.: LAMP-E27" style="text-transform:uppercase"></label>
       <label class="f" style="margin:0"><span>Descrição</span><input id="m_nome" placeholder="Ex.: Lâmpada E27"></label></div>
       <label class="f" style="margin:8px 0 0"><span>Grupo</span><select id="m_grp" onchange="onGrpSel(this.value)">${gruposMat().map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}<option value="__novo">+ Novo grupo…</option></select></label>
       <label class="f" id="m_grp_novo_w" style="margin:8px 0 0;display:none"><span>Nome do novo grupo</span><input id="m_grp_novo" placeholder="Ex.: Canalização"></label>
+      ${S.matFornCol ? `<label class="f" style="margin:8px 0 0"><span>Fornecedor</span><input id="m_forn" list="dl_mforn" placeholder="Onde se compra (ex.: Leroy Merlin)"></label>` : ""}
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn pri sm" onclick="addMat()">Adicionar</button></div>
     </details>
   </div></div></div>`;
@@ -860,6 +866,11 @@ function grupoMat(m){
 }
 const gruposMat = () => [...new Set([...matList().map(grupoMat), ...GRUPOS_BASE])].sort((a, b) => a.localeCompare(b, "pt"));
 function onGrpSel(v){ const w = document.getElementById("m_grp_novo_w"); if(w) w.style.display = v === "__novo" ? "" : "none"; if(v === "__novo") setTimeout(() => { const e = document.getElementById("m_grp_novo"); if(e) e.focus(); }, 0); }
+async function mudarForn(codigo, f){
+  if(!VE_STOCK()) return; f = (f || "").trim();
+  const { error } = await sb.from("materiais").update({ fornecedor: f }).eq("codigo", codigo); if(error) return writeErr(error);
+  S.mat[codigo] = { ...S.mat[codigo], fornecedor: f }; toast(f ? "Fornecedor: " + f + "." : "Fornecedor retirado.");
+}
 async function mudarGrupo(codigo, g){
   if(!VE_STOCK()) return;
   if(g === "__novo"){ g = (prompt("Nome do novo grupo:") || "").trim(); if(!g){ render(); return; } }
@@ -1227,7 +1238,7 @@ async function addMat(){
   const novoGrupo = !gruposMat().includes(g);
   if(!S.matGrupoCol && novoGrupo){ toast("Falta preparar a base de dados para grupos novos (ficheiro GRUPOS)."); return; }
   const ordem = Math.max(0, ...Object.values(S.mat).map(m => m.ordem || 0)) + 1;
-  const row = { codigo, nome, ordem, ativo: true, ...(S.matGrupoCol ? { grupo: g } : {}) };
+  const row = { codigo, nome, ordem, ativo: true, ...(S.matGrupoCol ? { grupo: g } : {}), ...(S.matFornCol && val("m_forn") ? { fornecedor: val("m_forn") } : {}) };
   if(!S.matGrupoCol) row.ordem = { "Limpeza": 100, "Placas": 200, "Iluminação": 300 }[g] + ordem || 900 + ordem;
   const { error } = await sb.from("materiais").upsert(row);
   if(error) return writeErr(error);
@@ -2047,8 +2058,8 @@ function reportHtml(o, withPhotos = true){
     ${o.descricao?`<h2>Descrição da avaria / pedido</h2><div class="txt">${esc(o.descricao)}</div>`:""}
     ${ck.length?`<h2>Verificações</h2><table>${ck.map(x => `<tr><td style="width:34px;text-align:center">${x.ok?"✔":"✘"}</td><td>${esc(x.t)}</td></tr>`).join("")}</table>`:""}
     ${pc.length ? (IS_ADMIN
-      ? `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:130px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxt(x))}</td><td>${esc(x.c||"")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x)!==null?eur(unitPrice(x)):"—"}</td><td style="text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total materiais</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>`
-      : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxt(x))}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
+      ? `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:130px">Código</th>${pc.some(fornLinha) ? '<th style="width:120px">Fornecedor</th>' : ""}<th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxtCurto(x))}</td><td>${esc(x.c||"")}</td>${pc.some(fornLinha) ? `<td>${esc(fornLinha(x))}</td>` : ""}<td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x)!==null?eur(unitPrice(x)):"—"}</td><td style="text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</td></tr>`).join("")}<tr><th colspan="${pc.some(fornLinha) ? 5 : 4}" style="text-align:right;background:#eee">Total materiais</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>`
+      : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th>${pc.some(fornLinha) ? '<th style="width:130px">Fornecedor</th>' : ""}<th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxtCurto(x))}</td><td>${esc(x.c||"")}</td>${pc.some(fornLinha) ? `<td>${esc(fornLinha(x))}</td>` : ""}<td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
     ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
       <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
       ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${moTxtFora(o)}</td><td style="text-align:right">${eur(v.mo)}</td></tr>
@@ -2125,7 +2136,7 @@ function guiaHtml(o){
     <h2>Entrega</h2>
     <table class="prkv">${row(o.origemStock && o.origemStock !== "principal" && o.origemStock !== "c5arm" ? "Técnico" : "Levantado por", quem)}${row("Entregue por", por)}${row("Local", o.origemStock && o.origemStock !== "principal" && S.stk.locais[o.origemStock] ? S.stk.locais[o.origemStock].nome.replace(/ —.*$/, "") : "Escritório")}</table>
     <h2>Material</h2>
-    <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th><th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n)}</td><td>${esc(x.c || "")}</td><td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="4" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
+    <table><tr><th style="width:auto">Descrição</th><th style="width:120px">Código</th>${pc.some(fornLinha) ? '<th style="width:120px">Fornecedor</th>' : ""}<th style="width:45px;text-align:right">Qtd</th><th style="width:80px;text-align:right">Preço un.</th><th style="width:85px;text-align:right">Total</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxtCurto(x))}</td><td>${esc(x.c || "")}</td>${pc.some(fornLinha) ? `<td>${esc(fornLinha(x))}</td>` : ""}<td style="text-align:right">${esc(x.q)}</td><td style="text-align:right">${unitPrice(x) !== null ? eur(unitPrice(x)) : "—"}</td><td style="text-align:right">${lineTotal(x) !== null ? eur(lineTotal(x)) : "—"}</td></tr>`).join("")}<tr><th colspan="${pc.some(fornLinha) ? 5 : 4}" style="text-align:right;background:#eee">Total</th><th style="text-align:right;background:#eee">${eur(partsTotal(pc))}</th></tr></table>
     ${entregaObs(o) ? `<h2>Observações</h2><div class="txt">${esc(entregaObs(o))}</div>` : ""}
     ${(() => { const sg = o.criadoPor && (S.equipa[o.criadoPor] || {}).assinatura; return `<div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>Entregue por<br>${esc(por)}</span></div></div>`; })()}
     <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
@@ -2573,7 +2584,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
