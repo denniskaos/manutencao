@@ -308,7 +308,11 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 #who .who-n{color:#dfe5e8;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #printArea{display:none}
 @media print{
-  @page{size:A4;margin:14mm}
+  /* margem 0 na página = o browser não imprime o endereço do site, a data nem o título;
+     a margem passa a ser feita pelo próprio documento, repetida em cada folha */
+  @page{size:A4;margin:0}
+  #printArea .pr{padding:14mm;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  #printArea .pr.sumpage{padding:10mm}
   html,body{background:#fff !important;height:auto !important;overflow:visible !important;display:block !important}
   main,nav,header,.scrim,.toast{display:none !important}
   body > *:not(#printArea){display:none !important}
@@ -318,7 +322,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .pr .lg{display:flex;align-items:center;gap:14px}
 .pr .lg img{height:16mm;width:auto}
 .pr .pb,.pb{break-before:page;page-break-before:always}
-@page resumo{size:A4 landscape;margin:10mm}
+@page resumo{size:A4 landscape;margin:0}
 .sumpage{page:resumo}
 .pr table.sm{font-size:8.5pt}
 .pr table.sm td,.pr table.sm th{padding:3px 5px}
@@ -349,7 +353,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=103"></script>
-<script type="module" src="app.js?v=103"></script>
+<script src="config.js?v=104"></script>
+<script type="module" src="app.js?v=104"></script>
 </body>
 </html>
