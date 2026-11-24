@@ -1765,16 +1765,23 @@ function diasRows(lista, onch, semData, comX){
   const x_ = onch.replace(/"/g, "&quot;");
   return lista.map(x => `<div class="drow" data-onch="${x_}">
     <div class="dl1">${semData ? "" : `<input type="date" class="dd" value="${esc(x.d || today())}" onchange="${onch}">`}<input type="number" min="0" class="dh" value="${Math.floor((x.m || 0) / 60)}" onchange="limparHoras(this);${onch}"><span class="dlab">h</span><input type="number" min="0" max="59" step="5" class="dm" value="${(x.m || 0) % 60}" onchange="limparHoras(this);${onch}"><span class="dlab">min</span>${!semData && (comX || lista.length > 1) ? `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>` : ""}</div>
-    <div class="dl2"><span class="dlab">ou das</span><input type="time" class="di" value="${esc(x.i || "")}" onchange="horaDia(this)"><span class="dlab">às</span><input type="time" class="df" value="${esc(x.f || "")}" onchange="horaDia(this)"></div></div>`).join("");
+    <div class="dl2"><span class="dlab">ou das</span><input type="time" class="di" value="${esc(x.i || "")}" onchange="horaDia(this)"><span class="dlab">às</span><input type="time" class="df" value="${esc(x.f || "")}" onchange="horaDia(this)"></div><div class="dalm">${almTxt(x)}</div></div>`).join("");
 }
+const almTxt = x => { if(!x.i || !x.f) return ""; const [h1, m1] = x.i.split(":").map(Number), [h2, m2] = x.f.split(":").map(Number); const ini = h1 * 60 + m1; let fim = h2 * 60 + m2; if(fim < ini) fim += 1440; const a = Math.max(0, Math.min(fim, 780) - Math.max(ini, 720)); return a > 0 && fim - ini - a > 0 ? (a === 60 ? "1 h de almoço descontada" : a + " min de almoço descontados") : ""; };
 // Das X às Y → calcula as horas e minutos dessa linha
 function horaDia(el){
   const r = el.closest(".drow"); const a = r.querySelector(".di").value, b = r.querySelector(".df").value;
-  if(a && b){ const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number); let t = (h2 * 60 + m2) - (h1 * 60 + m1); if(t < 0) t += 24 * 60;
+  let nota = "";
+  if(a && b){ const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number); const ini = h1 * 60 + m1; let fim = h2 * 60 + m2; if(fim < ini) fim += 24 * 60;
+    let t = fim - ini;
+    // hora de almoço: desconta a parte entre as 12h00 e as 13h00 que caia dentro do intervalo
+    const alm = Math.max(0, Math.min(fim, 13 * 60) - Math.max(ini, 12 * 60));
+    if(alm > 0 && t - alm > 0){ t -= alm; nota = alm === 60 ? "1 h de almoço descontada" : alm + " min de almoço descontados"; }
     r.querySelector(".dh").value = Math.floor(t / 60); r.querySelector(".dm").value = t % 60; }
+  let n = r.querySelector(".dalm"); if(!n){ n = document.createElement("div"); n.className = "dalm"; r.appendChild(n); } n.textContent = nota;
   correrOnch(r);
 }
-function limparHoras(el){ const r = el.closest(".drow"); r.querySelector(".di").value = ""; r.querySelector(".df").value = ""; }
+function limparHoras(el){ const r = el.closest(".drow"); r.querySelector(".di").value = ""; r.querySelector(".df").value = ""; const n = r.querySelector(".dalm"); if(n) n.textContent = ""; }
 function tirarDia(btn){ const r = btn.closest(".drow"); const box = r.parentNode; const f = r.dataset.onch; r.remove(); if(box.querySelectorAll(".drow").length === 1){ const b = box.querySelector(".drow button"); if(b) b.remove(); } if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
 function correrOnch(r){ const f = r.dataset.onch; if(f) (new Function(f.replace(/&quot;/g, '"')))(); }
 function lerDias(elId){ const el = document.getElementById(elId); if(!el) return [];
