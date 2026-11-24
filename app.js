@@ -383,6 +383,9 @@ const diaTxt = x => (x.d ? fmtDate(x.d).slice(0, 5) + " " : "") + (x.i && x.f ? 
 const tempoTxt = o => fmtTempo(o.tempo) + (nDias(o) > 1 ? ` em ${nDias(o)} dias` : "");
 const diasTxt = o => { const l = Array.isArray(o.dias) ? o.dias.filter(x => Number(x.m) > 0) : []; return l.length > 1 || l.some(x => x.i) ? l.map(diaTxt).join(" · ") : ""; };
 const smOt = o => !!(S.equipa[o.tecnico] || {}).soRegistaMaterial;
+// texto para documentos que saem para fora: só o tempo, nunca o preço/hora
+const moTxtFora = o => tempoTxt(o);
+const deslTxtFora = v => v.tt ? "incluída" : v.nd + (v.nd === 1 ? " deslocação" : " deslocações");
 const moTxt = (o, v) => v.tt ? `${tempoTxt(o)} · ${eur(v.tt.hora1)} 1.ª hora + ${eur(v.tt.hora)}/h seguintes` : `${tempoTxt(o)} × ${eur(S.tarifas.hora)}/h`;
 function valores(o){
   if(isExt(o)) return { mat: 0, mo: 0, nd: 0, desl: 0, so: false, ext: true, ex: 0, exTipo: "", total: 0 };
@@ -1988,7 +1991,7 @@ function reportText(id){
   if(o.extra && o.soMaterial !== true) L.push("", "Manutenção extra: " + EXTRAS[o.extra]);
   if(o.tempo) L.push("", "Tempo gasto: " + tempoTxt(o) + (diasTxt(o) ? " (" + diasTxt(o) + ")" : ""));
   if(!isExt(o)) L.push("Serviço: " + (o.estado === "concluida" ? "terminado" : "por terminar" + (o.falta ? " — falta: " + o.falta : "")));
-  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxt(o, v) + "): " + eur(v.mo), (v.tt ? "Deslocação: incluída na tarifa do técnico" : "Deslocação (" + v.nd + " × " + eur(S.tarifas.deslocacao) + "): " + eur(v.desl)), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
+  if(IS_ADMIN){ const v = valores(o); L.push("", "VALORES", "Materiais: " + eur(v.mat)); if(v.so) L.push("Só entrega de material — sem deslocação nem mão de obra", "TOTAL: " + eur(v.total)); else L.push("Mão de obra (" + moTxtFora(o) + "): " + eur(v.mo), "Deslocação (" + deslTxtFora(v) + "): " + eur(v.desl), ...(v.ex ? [EXTRAS[v.exTipo] + ": " + eur(v.ex)] : []), "TOTAL: " + eur(v.total)); }
   if((o.fotos||[]).length) L.push("", "Fotografias registadas: " + o.fotos.length);
   if(o.notas) L.push("", "TRABALHO REALIZADO / NOTAS", o.notas);
   return L.join("\n");
@@ -2048,8 +2051,8 @@ function reportHtml(o, withPhotos = true){
       : `<h2>Peças / materiais</h2><table><tr><th style="width:auto">Descrição</th><th style="width:150px">Código</th><th style="width:60px">Qtd</th></tr>${pc.map(x => `<tr><td>${esc(x.n + fatTxt(x))}</td><td>${esc(x.c||"")}</td><td>${esc(x.q)}</td></tr>`).join("")}</table>`) : ""}
     ${IS_ADMIN ? (() => { const v = valores(o); return `<h2>Valores</h2><table>
       <tr><td>Materiais</td><td style="width:110px;text-align:right">${eur(v.mat)}</td></tr>
-      ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${moTxt(o, v)}</td><td style="text-align:right">${eur(v.mo)}</td></tr>
-      <tr><td>Deslocação — ${v.tt ? "incluída na tarifa do técnico" : v.nd + " × " + eur(S.tarifas.deslocacao)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>${v.ex ? `<tr><td>${EXTRAS[v.exTipo]}</td><td style="text-align:right">${eur(v.ex)}</td></tr>` : ""}`}
+      ${v.so ? `<tr><td colspan="2">Só entrega de material — sem deslocação nem mão de obra</td></tr>` : `<tr><td>Mão de obra — ${moTxtFora(o)}</td><td style="text-align:right">${eur(v.mo)}</td></tr>
+      <tr><td>Deslocação — ${deslTxtFora(v)}</td><td style="text-align:right">${eur(v.desl)}</td></tr>${v.ex ? `<tr><td>${EXTRAS[v.exTipo]}</td><td style="text-align:right">${eur(v.ex)}</td></tr>` : ""}`}
       <tr><th style="text-align:right">Total</th><th style="text-align:right">${eur(v.total)}</th></tr></table>`; })() : ""}
     <h2>Trabalho realizado / observações</h2><div class="txt">${esc(o.notas || "")}</div>
     ${fotos.length && withPhotos?`<h2>Fotografias</h2><div class="ph">${fotos.filter(p => URLS[p]).map(p => `<img src="${esc(URLS[p])}" alt="">`).join("")}</div>`:""}
