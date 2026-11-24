@@ -550,7 +550,15 @@ function planItem(p, hideCondo){
     <div class="r"><span class="badge ${st[1]}">${st[0]}</span></div></div>`;
 }
 const emptyBox = (msg, btn) => `<div class="empty">${msg}${btn?`<br>${btn}`:""}</div>`;
-const condoFilterSel = () => `<select class="search" onchange="condoF=this.value;render()"><option value="">Todos os condomínios</option>${condosSorted().map(c=>`<option value="${c.id}" ${c.id===condoF?"selected":""}>${esc(cLabel(c))}</option>`).join("")}</select>`;
+const condoFilterSel = () => condoF && S.condos[condoF]
+  ? `<div class="cfil on"><span class="search"><b class="mono">${esc(S.condos[condoF].codigo || "")}</b> ${esc(S.condos[condoF].nome)}</span><button type="button" class="btn sm" onclick="condoF='';render()" aria-label="Mostrar todos">✕</button></div>`
+  : `<div class="cfil"><input class="search" id="cf_q" placeholder="Todos os condomínios — escreva para procurar" autocomplete="off" oninput="procCondoF(this.value)" onfocus="procCondoF(this.value)" onkeydown="if(event.key==='Enter'){const b=document.querySelector('#cf_res button');if(b)b.click()}" onblur="setTimeout(()=>{const r=document.getElementById('cf_res');if(r)r.innerHTML=''},200)"><div class="cres cdrop" id="cf_res"></div></div>`;
+function procCondoF(v){
+  const res = document.getElementById("cf_res"); if(!res) return; const qq = (v || "").trim();
+  if(!qq){ res.innerHTML = ""; return; }
+  const found = condosSorted().filter(c => hit([c.codigo, c.nome, c.morada].join(" "), qq));
+  res.innerHTML = found.length ? found.slice(0, 12).map(c => `<button type="button" onmousedown="event.preventDefault()" onclick="condoF='${c.id}';render()"><b class="mono">${esc(c.codigo || "")}</b> ${esc(c.nome)}<small>${esc(c.morada || "")}</small></button>`).join("") + (found.length > 12 ? `<div class="mais">e mais ${found.length - 12} — escreva mais letras</div>` : "") : `<div class="mais">Nenhum condomínio encontrado.</div>`;
+}
 const techFilterSel = () => IS_ADMIN ? `<select class="search" onchange="techF=this.value;render()"><option value="">Todas as pessoas</option><option value="-" ${techF==="-"?"selected":""}>Por atribuir</option>${pessoasAgrupadas(techF)}</select>` : "";
 const statCard = (n, label, onclick, warn) => `<div class="stat ${warn&&n?"warn":""}" onclick="${onclick}"><b>${n}</b><span>${label}</span></div>`;
 
@@ -2544,7 +2552,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
