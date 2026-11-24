@@ -967,7 +967,7 @@ function openSheet(title, html, refresh){
   $("#scrim").classList.add("open"); $("#sheet").scrollTop = 0; sheetRefresh = refresh || null;
 }
 function hideSheet(){ $("#scrim").classList.remove("open"); sheetRefresh = null; }
-function closeSheet(){ hideSheet(); if(sheetHist && !pendingBack) pendingBack = setTimeout(() => { pendingBack = null; if(sheetHist && !$("#scrim").classList.contains("open")){ sheetHist = false; histBack(); } }, 0); }
+function closeSheet(){ DIAS_RASC = {}; hideSheet(); if(sheetHist && !pendingBack) pendingBack = setTimeout(() => { pendingBack = null; if(sheetHist && !$("#scrim").classList.contains("open")){ sheetHist = false; histBack(); } }, 0); }
 $("#scrim").addEventListener("click", e => { if(e.target.id === "scrim") closeSheet(); });
 document.addEventListener("keydown", e => { if(e.key === "Escape") closeSheet(); });
 function armDelete(btn, fn){
@@ -1778,15 +1778,27 @@ function maisDia(elId){
   const onch = rows.length ? (rows[0].dataset.onch || "").replace(/&quot;/g, '"') : "";
   el.insertAdjacentHTML("beforeend", diasRows([{ d: nd, m: 0 }], onch, false, true));
   if(rows.length === 1 && !rows[0].querySelector("button")) rows[0].querySelector(".dl1").insertAdjacentHTML("beforeend", `<button type="button" class="btn sm" onclick="tirarDia(this)" aria-label="Tirar dia">✕</button>`);
+  if(onch) (new Function(onch))();
   const novo = el.querySelector(".drow:last-child .di"); if(novo) novo.focus();
+}
+// rascunho das linhas de dias que ainda não têm horas (para não desaparecerem quando o ecrã se redesenha)
+let DIAS_RASC = {};
+const normDias = a => JSON.stringify((a || []).map(x => [x.d || "", Number(x.m) || 0, x.i || "", x.f || ""]));
+function diasParaMostrar(o, id){
+  const base = o.dias && o.dias.length ? o.dias : [{ d: o.concluida || o.data || today(), m: Number(o.tempo) || 0 }];
+  const r = DIAS_RASC[id]; if(!r) return base;
+  const guardados = o.dias && o.dias.length ? o.dias : null;
+  const cheios = r.filter(x => x.m > 0);
+  const bate = guardados ? normDias(cheios) === normDias(guardados) : cheios.reduce((a, x) => a + x.m, 0) === (Number(o.tempo) || 0);
+  return bate ? r : base;
 }
 function onTempo(id){
   const o = S.ots[id]; if(!o) return;
-  const dias = lerDias("t_dias"); const t = dias.reduce((a, x) => a + x.m, 0);
+  const dias = lerDias("t_dias"); DIAS_RASC[id] = dias; const t = dias.reduce((a, x) => a + x.m, 0);
   const patch = {};
   if(o.tempo !== t) patch.tempo = t;
   if(S.diasCol){ const limpos = dias.filter(x => x.m > 0); const novo = limpos.length > 1 || limpos.some(x => x.i) ? limpos : [];
-    if(JSON.stringify(o.dias || []) !== JSON.stringify(novo)) patch.dias = novo;
+    if(normDias(o.dias) !== normDias(novo)) patch.dias = novo;
     if(limpos.length > 1 && nDesloc(o) < limpos.length) patch.deslocacoes = limpos.length; }
   if(Object.keys(patch).length) updOt(id, patch, true);
 }
@@ -1903,7 +1915,7 @@ function openOt(id){
       ${!("extra" in o) ? "" : `<div class="panel"><b>Manutenção extra</b>
         <div class="seg" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button class="${(o.extra||"")===k?"on":""}" ${mine && !locked ? `onclick="setExtra('${id}','${k}')"` : "disabled"}>${l}${IS_ADMIN && k ? ` <span style="font-weight:400">${eur(extraVal(k))}</span>` : ""}</button>`).join("")}</div></div>`}
       <div class="panel"><b>Tempo gasto</b>${nDias(o) > 1 ? ` <span style="color:var(--muted);font-size:13px">· total ${tempoTxt(o)}</span>` : ""}
-        <div id="t_dias" style="margin-top:6px">${diasRows(S.diasCol ? (o.dias && o.dias.length ? o.dias : [{ d: o.concluida || o.data || today(), m: Number(o.tempo) || 0 }]) : [{ d: "", m: Number(o.tempo) || 0 }], `onTempo('${id}')`, !S.diasCol)}</div>
+        <div id="t_dias" style="margin-top:6px">${diasRows(S.diasCol ? diasParaMostrar(o, id) : [{ d: "", m: Number(o.tempo) || 0 }], `onTempo('${id}')`, !S.diasCol)}</div>
         ${S.diasCol ? `<button class="btn sm" style="margin-top:6px" onclick="maisDia('t_dias')">+ Mais um dia</button>` : ""}</div>
       ${IS_ADMIN ? (() => { const v = valores(o); return `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só administrativos)</span>
         <div class="parts" style="margin-top:6px">
