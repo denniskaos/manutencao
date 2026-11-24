@@ -821,6 +821,8 @@ function viewEquipa(){
 const VERSAO = (() => { try{ return new URL(import.meta.url).searchParams.get("v") || ""; }catch(_){ return ""; } })();
 const versaoHtml = () => VERSAO ? `<div class="versao">Versão ${esc(VERSAO)}</div>` : "";
 const prLogo = () => (S.empresa || {}).logo ? `<img src="${esc(S.empresa.logo)}" alt="">` : "";
+// caixa em branco para apontar à mão o(s) nº(s) de lançamento no Gecond
+const gecondBox = () => `<div class="gecb"><span>Nº(s) de lançamento Gecond</span><div></div></div>`;
 const prMarca = () => { const e = S.empresa || {}; return e.nome ? " · " + esc(e.nome) + (e.subtitulo ? " — " + esc(e.subtitulo) : "") : ""; };
 const eurIn = (val, on, ph = "0,00") => `<span class="eurin"><input inputmode="decimal" value="${val}" placeholder="${ph}" onchange="${on}"><span>€</span></span>`;
 const numPt = v => v === undefined || v === null || v === "" || isNaN(Number(v)) ? "" : Number(v).toFixed(2).replace(".", ",");
@@ -1064,7 +1066,25 @@ function sigInit(){
   c.onpointerup = c.onpointercancel = () => { down = false; };
 }
 function sigClear(){ const c = document.getElementById("sigPad"); if(!c) return; c.getContext("2d").clearRect(0, 0, c.width, c.height); sigDrawn = false; }
+// Assinatura escrita a subir/descer: endireita-a (só se for alongada, tipo nome escrito, e inclinada 3°–40°)
+function sigEndireitar(c){
+  const ctx = c.getContext("2d"); const { width: w, height: h } = c; const d = ctx.getImageData(0, 0, w, h).data;
+  let n = 0, sx = 0, sy = 0; const pts = [];
+  for(let y = 0; y < h; y += 2) for(let x = 0; x < w; x += 2) if(d[(y * w + x) * 4 + 3] > 10){ pts.push(x, y); sx += x; sy += y; n++; }
+  if(n < 30) return c;
+  const mx = sx / n, my = sy / n; let xx = 0, yy = 0, xy = 0;
+  for(let i = 0; i < pts.length; i += 2){ const dx = pts[i] - mx, dy = pts[i + 1] - my; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+  const th = 0.5 * Math.atan2(2 * xy, xx - yy); // ângulo da direção principal (radianos, y para baixo)
+  const tr = (xx + yy) / 2, df = Math.sqrt(((xx - yy) / 2) ** 2 + xy * xy); const along = Math.sqrt((tr + df) / Math.max(tr - df, 1e-6));
+  const graus = Math.abs(th * 180 / Math.PI);
+  if(along < 3 || graus < 3 || graus > 40) return c;
+  const cos = Math.abs(Math.cos(th)), sin = Math.abs(Math.sin(th));
+  const o = document.createElement("canvas"); o.width = Math.ceil(w * cos + h * sin); o.height = Math.ceil(w * sin + h * cos);
+  const g = o.getContext("2d"); g.translate(o.width / 2, o.height / 2); g.rotate(-th); g.drawImage(c, -w / 2, -h / 2);
+  return o;
+}
 function sigTrim(c){
+  c = sigEndireitar(c);
   const ctx = c.getContext("2d"); const { width: w, height: h } = c; const d = ctx.getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for(let y = 0; y < h; y++) for(let x = 0; x < w; x++) if(d[(y * w + x) * 4 + 3] > 10){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
@@ -2038,6 +2058,7 @@ function extReportHtml(o, withPhotos){
   return `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Ficha de Acompanhamento de Avaria</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${o.estado === "concluida" ? "Resolvida" : esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Resolvida: ${fmtDate(o.concluida)}`:""}</div></div>
+    ${gecondBox()}
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}</table>
     <h2>Avaria</h2>
@@ -2061,6 +2082,7 @@ function reportHtml(o, withPhotos = true){
   return `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}</div></div>
+    ${gecondBox()}
     <h2>Condomínio</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}${row("NIF", c.nif)}${row("Administração", c.admin)}</table>
     <h2>Intervenção</h2>
@@ -2082,10 +2104,18 @@ function reportHtml(o, withPhotos = true){
     ${(() => { const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura; return `<div class="sig${sg ? " has" : ""}"><div>${sg ? `<img class="sgimg" src="${esc(sg)}" alt="">` : ""}<span>O Técnico${o.tecnico ? "<br>" + esc(nm(o.tecnico)) : ""}</span></div><div><span>O Responsável do Condomínio<br>&nbsp;</span></div></div>`; })()}
     <div class="ft">Impresso em ${fmtDate(today())} ${prMarca()}</div></div>`;
 }
+// assinaturas já guardadas: endireitam-se na hora de imprimir (as novas já são guardadas direitas)
+const SIG_DIR = {};
+async function sigDireita(src){
+  if(SIG_DIR[src]) return SIG_DIR[src];
+  try{ const img = new Image(); img.src = src; await img.decode(); const c = document.createElement("canvas"); c.width = img.width + 40; c.height = img.height + 40; c.getContext("2d").drawImage(img, 20, 20); SIG_DIR[src] = sigTrim(c) || src; }catch(_){ SIG_DIR[src] = src; }
+  return SIG_DIR[src];
+}
 async function printHtml(html){
   let pa = document.getElementById("printArea");
   if(!pa){ pa = document.createElement("div"); pa.id = "printArea"; document.body.appendChild(pa); }
   pa.innerHTML = html;
+  for(const im of pa.querySelectorAll("img.sgimg")) if(im.src.startsWith("data:")) im.src = await sigDireita(im.src);
   const imgs = [...pa.querySelectorAll("img")];
   await Promise.race([
     Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))),
@@ -2143,6 +2173,7 @@ function guiaHtml(o){
   const via = v => `<div class="pr">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Guia de Entrega de Material</h1></div></div>
       <div class="meta">Guia nº <b>${esc(numOt(o) || "—")}</b><br>Data: <b>${fmtDate(o.data || o.criada)}</b>${hora ? " · " + hora : ""}</div></div>
+    ${gecondBox()}
     <h2>Destino</h2>
     <table class="prkv">${row("Condomínio", c.nome ? cLabel(c) : "—")}${row("Morada", c.morada)}</table>
     <h2>Entrega</h2>
