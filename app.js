@@ -40,7 +40,7 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias","falta"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","deFolha","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias","falta"],
 };
 const NULLABLE = new Set(["origemStock","equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
@@ -169,7 +169,7 @@ async function loadAll(uid){
     S.equip = Object.fromEntries(equip.map(r => [r.id, fromRow(r)]));
     S.plans = Object.fromEntries(plans.map(r => [r.id, fromRow(r)]));
     S.cdm = Object.fromEntries(cdms.map(r => [r.id, fromRow(r)]));
-    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r);
+    S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r); S.folhaCol = ots.some(r => "de_folha" in r);
     S.notifs = notifs.map(fromRow);
     S.empresa = (emR && emR.data) || {};
     S.zonasOk = !!(zrR && !zrR.error); S.zonas = Object.fromEntries(((zrR && zrR.data) || []).map(r => [r.zona, r.tecnico]));
@@ -239,7 +239,7 @@ async function refreshQuiet(){
       sb.from("ordens").select("*").range(0, 9999),
       sb.from("notificacoes").select("*").order("id", { ascending: false }).limit(80),
     ]);
-    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r); S.faltaCol = ots.some(r => "falta" in r);
+    if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r); if(ots && ots.length){ S.faltaCol = ots.some(r => "falta" in r); S.folhaCol = ots.some(r => "de_folha" in r); }
     if(notifs) S.notifs = notifs.map(fromRow);
     render(); autoReadNotifs();
   } finally { refreshing = false; }
@@ -1550,6 +1550,7 @@ function editOt(id, condoId, equipId){
     <div class="grid2"><label class="f"><span>Data prevista</span><input type="date" id="f_data" value="${esc(o.data)}"></label>
     <label class="f"><span>Pedido por</span><input id="f_sol" value="${esc(o.solicitante)}" placeholder="Administração, condómino 2º dto…"></label></div>
     <label class="f"><span>Descrição da avaria / pedido</span><textarea id="f_desc">${esc(o.descricao)}</textarea></label>
+    ${IS_ADMIN && !id && S.folhaCol ? `<label class="fatchk" style="margin:-4px 0 12px"><input type="checkbox" id="f_folha"> Serviço já feito — estou a passar a folha do técnico <span style="color:var(--muted);font-size:12.5px">(o técnico não é avisado)</span></label>` : ""}
     <label class="f"><span>Checklist (opcional, uma verificação por linha)</span><textarea id="f_ck">${esc((o.checklist||[]).map(c=>c.t).join("\n"))}</textarea></label>
     <div class="actions">${id && IS_ADMIN?`<button class="btn danger" onclick="armDelete(this,()=>{del('ots','${id}');closeSheet();toast('Ordem eliminada.')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="${id?`openOt('${id}')`:"closeSheet()"}">Cancelar</button><button class="btn pri" onclick="saveOt('${id||""}')">Guardar</button></div>`);
 }
@@ -1563,7 +1564,10 @@ function saveOt(id){
   const tecnico = IS_ADMIN ? (val("f_tec") || (!prev ? respZona(condoId) : "")) : (prev ? prev.tecnico : ME);
   const o = {...(prev || {estado:"aberta", pecas:[], fotos:[], notas:"", tempo:0, criada: today(), criadaEm: nowIso(), criadoPor: ME}), id: id || newId(), titulo, condoId, equipId, tecnico, zona: val("f_zona"), tipo: val("f_tipo"), prioridade: val("f_pri"), data: val("f_data"), solicitante: val("f_sol"), descricao: val("f_desc"), checklist};
   if(tecnico && (!prev || prev.tecnico !== tecnico)){ o.atribuida = today(); o.atribuidaEm = nowIso(); o.atribuidoPor = ME; }
+  const folha = !prev && IS_ADMIN && document.getElementById("f_folha") && document.getElementById("f_folha").checked;
+  if(folha){ o.deFolha = true; o.estado = "curso"; }
   put("ots", o);
+  if(folha) toast("Ordem guardada sem avisar " + (tecnico ? nm(tecnico) : "ninguém") + ". Registe agora o material e o tempo."); else
   toast(IS_ADMIN && tecnico && (!prev || prev.tecnico !== tecnico) ? (tecnico === ME ? "Ordem guardada." : "Ordem atribuída a " + nm(tecnico) + " — vai receber notificação.") : "Ordem guardada.");
   openOt(o.id);
 }
