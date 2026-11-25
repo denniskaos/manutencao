@@ -1324,10 +1324,52 @@ async function backupCompleto(btn){
   render();
 }
 // Conselho do tempo para o ecrã principal (técnicos e escritório)
+// Aviso do tempo no Início: muda com a previsão (quando chove, quanto, frio, calor, dias secos)
+// e a dica muda todos os dias.
+const DICAS_TEMPO = {
+  chuva: [
+    "Bom momento para verificar caleiros, ralos e tubos de queda antes da chuva.",
+    "Confirme que as grelhas das garagens e os ralos dos terraços estão desentupidos.",
+    "Se há infiltrações pendentes, vale a pena ver as zonas afetadas logo a seguir à chuva — é quando melhor se vê de onde entra a água.",
+    "Trabalhos em telhados e terraços ficam para dias secos; aproveite para trabalho interior (iluminação, campainhas, portas).",
+    "Tapetes à entrada dos prédios evitam escorregadelas nos halls com piso molhado.",
+    "Verifique as bombas de esgoto e de águas pluviais nas caves antes de chover forte.",
+  ],
+  seco: [
+    "Dias secos à vista: boa altura para trabalhos exteriores, telhados e terraços.",
+    "Aproveite o tempo seco para limpar caleiros e tubos de queda.",
+    "Bom tempo para pinturas e retoques exteriores e para marcar trabalhos em fachadas.",
+    "Tempo seco é bom para rever impermeabilizações e selagens antes da próxima chuva.",
+    "Boa altura para afinar portões de garagem e rever iluminação exterior.",
+  ],
+  frio: [
+    "Noites frias: atenção a canos expostos e contadores no exterior.",
+    "Com frio e humidade, os pisos exteriores e rampas de garagem ficam escorregadios.",
+    "O frio pode prender fechaduras e trincos exteriores — um pouco de lubrificante ajuda.",
+  ],
+  calor: [
+    "Muito calor: trabalhos em telhados e terraços de manhã cedo ou ao fim da tarde.",
+    "Com calor, leve água para as intervenções e evite as horas de maior sol.",
+    "Os comandos e motores de portões aquecem ao sol — bom momento para verificar se funcionam bem.",
+  ],
+};
 function meteoAviso(){
   if(!meteo || !meteo.dias || !meteo.dias.length) return "";
-  const prox = meteo.dias.slice(0, 3);
-  if(prox.some(d => d.prob >= 70)) return `<div class="note wxnote" onclick="openMeteo()"><span style="font-size:22px;line-height:1">🌧️</span><span><b>Chuva provável nos próximos dias.</b> Bom momento para verificar caleiros, ralos e infiltrações; trabalhos em telhados e terraços ficam para dias secos.</span></div>`;
+  const t = today(); const prox = meteo.dias.filter(d => d.data >= t).slice(0, 4); if(!prox.length) return "";
+  const nDia = Math.floor(Date.parse(t) / 864e5); const dica = k => DICAS_TEMPO[k][nDia % DICAS_TEMPO[k].length];
+  const qd = d => { const k = diffDays(d.data, t); return k === 0 ? "hoje" : k === 1 ? "amanhã" : DIAS_SEM[new Date(d.data + "T12:00:00").getDay()].toLowerCase(); };
+  const caixa = (ic, tit, txt) => `<div class="note wxnote" onclick="openMeteo()"><span style="font-size:22px;line-height:1">${ic}</span><span><b>${tit}</b> ${txt}</span></div>`;
+  const chuva = prox.slice(0, 3).find(d => d.prob >= 70);
+  if(chuva){
+    const dias = prox.slice(0, 3).filter(d => d.prob >= 70).length;
+    const tit = dias >= 2 ? `Chuva prevista a partir de ${qd(chuva)} (${chuva.prob}%), vários dias.` : `Chuva prevista ${qd(chuva)} (${chuva.prob}%).`;
+    return caixa(chuva.prob >= 90 ? "⛈️" : "🌧️", tit, dica("chuva"));
+  }
+  const frio = prox.slice(0, 3).find(d => d.tMin <= 3);
+  if(frio) return caixa("🥶", `Frio ${qd(frio)}: mínima de ${Math.round(frio.tMin)}°.`, dica("frio"));
+  const calor = prox.slice(0, 3).find(d => d.tMax >= 30);
+  if(calor) return caixa("🥵", `Calor ${qd(calor)}: máxima de ${Math.round(calor.tMax)}°.`, dica("calor"));
+  if(prox.slice(0, 3).every(d => d.prob < 30)) return caixa("☀️", "Sem chuva nos próximos dias.", dica("seco"));
   return "";
 }
 function copiaBanner(){
