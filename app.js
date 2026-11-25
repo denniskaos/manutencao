@@ -1008,11 +1008,33 @@ window.addEventListener("popstate", () => {
   if($("#scrim").classList.contains("open")){ sheetHist = false; hideSheet(); return; }
   if(tabHist && tab !== "inicio"){ tabHist = false; tab = "inicio"; q = ""; listMax = 50; render(); scroller().scrollTop = 0; }
 });
+// Quando a ficha aberta se redesenha (chegou uma atualização), não se pode perder o que a pessoa
+// está a escrever: guarda-se o estado dos campos e repõe-se depois.
+function guardarForm(){
+  const sh = document.getElementById("sheet"); if(!sh) return null; const m = {};
+  for(const e of sh.querySelectorAll("input[id],select[id],textarea[id]")){
+    m[e.id] = { v: e.value, c: e.checked, d: e.style.display, t: e.type };
+  }
+  for(const e of sh.querySelectorAll("[id][style*='display']")) if(!m[e.id]) m[e.id] = { d: e.style.display };
+  const a = document.activeElement; m.__foco = a && sh.contains(a) && a.id ? { id: a.id, p: (() => { try{ return a.selectionStart; }catch(_){ return null; } })() } : null;
+  return m;
+}
+function reporForm(m){
+  if(!m) return; const sh = document.getElementById("sheet"); if(!sh) return;
+  for(const [id, st] of Object.entries(m)){
+    if(id === "__foco") continue; const e = document.getElementById(id); if(!e || !sh.contains(e)) continue;
+    if(st.t === "checkbox" || st.t === "radio"){ if(st.c && !e.checked) e.checked = true; }
+    else if(st.v !== undefined && st.v !== "" && (e.value === "" || e.tagName === "SELECT" && e.value !== st.v && !e.value)) e.value = st.v;
+    if(st.d === "" && e.style.display === "none") e.style.display = "";
+  }
+  if(m.__foco){ const e = document.getElementById(m.__foco.id); if(e && sh.contains(e)){ try{ e.focus({ preventScroll: true }); if(m.__foco.p != null && e.setSelectionRange) e.setSelectionRange(m.__foco.p, m.__foco.p); }catch(_){} } }
+}
 function openSheet(title, html, refresh){
   if(pendingBack){ clearTimeout(pendingBack); pendingBack = null; }
   else if(!$("#scrim").classList.contains("open") && !sheetHist){ try{ history.pushState({ sheet: 1 }, ""); sheetHist = true; }catch(e){} }
   $("#sheet").innerHTML = `<div class="top"><h4>${title}</h4><button class="x" onclick="closeSheet()" aria-label="Fechar">×</button></div><div class="body">${html}</div>`;
-  $("#scrim").classList.add("open"); $("#sheet").scrollTop = 0; sheetRefresh = refresh || null;
+  $("#scrim").classList.add("open"); $("#sheet").scrollTop = 0;
+  sheetRefresh = refresh ? () => { const m = guardarForm(); const y = $("#sheet").scrollTop; refresh(); reporForm(m); $("#sheet").scrollTop = y; } : null;
 }
 function hideSheet(){ $("#scrim").classList.remove("open"); sheetRefresh = null; }
 function closeSheet(){ DIAS_RASC = {}; hideSheet(); if(sheetHist && !pendingBack) pendingBack = setTimeout(() => { pendingBack = null; if(sheetHist && !$("#scrim").classList.contains("open")){ sheetHist = false; histBack(); } }, 0); }
