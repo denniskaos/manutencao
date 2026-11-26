@@ -365,12 +365,37 @@ const lerFat = pre => { const c = $("#" + pre + "_fat"); if(!c || !c.checked) re
 // fornecedor de uma linha de material: o da fatura, senão o definido no material
 const fornLinha = x => (x && (x.fo || (x.c && (S.mat[x.c] || {}).fornecedor))) || "";
 const dlForn = () => document.getElementById("dl_mforn") ? "" : `<datalist id="dl_mforn">${[...new Set(Object.values(S.mat).map(m => m.fornecedor).filter(Boolean))].sort().map(f => `<option value="${esc(f)}">`).join("")}</datalist>`;
+// Escolha de material sem a lista nativa do Android (que ocupa o ecrã todo):
+// um campo que abre por baixo uma lista curta, com procura e por grupos.
+function matPicker(id, onch, comCod){
+  const ops = matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}${comCod ? " · " + esc(m.codigo) : ""}</option>`).join("");
+  return `<select id="${id}" style="display:none" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>
+    <div class="mpk" id="${id}_pk"><button type="button" class="mpk-b" onclick="mpkAbrir('${id}')"><span id="${id}_lbl">— Escolher material —</span><span class="mpk-c">▾</span></button>
+    <div class="mpk-p" id="${id}_pp" style="display:none"><input class="search" id="${id}_q" placeholder="Procurar material…" autocomplete="off" oninput="mpkLista('${id}')"><div class="mpk-l" id="${id}_l"></div></div></div>`;
+}
+function mpkAbrir(id){ const p = document.getElementById(id + "_pp"); if(!p) return; const ab = p.style.display === "none"; p.style.display = ab ? "" : "none"; if(ab){ mpkLista(id); const q = document.getElementById(id + "_q"); if(q){ q.value = ""; mpkLista(id); } } }
+function mpkLista(id){
+  const l = document.getElementById(id + "_l"); if(!l) return; const qq = val(id + "_q");
+  const ms = matList().filter(m => !qq || hit(m.nome + " " + m.codigo + " " + (m.grupo || ""), qq));
+  const g = {}; for(const m of ms){ const k = m.grupo || "Outros"; (g[k] ||= []).push(m); }
+  l.innerHTML = Object.entries(g).map(([k, a]) => `<div class="mpk-g">${esc(k)}</div>` + a.map(m => `<button type="button" onclick="mpkEscolher('${id}','${esc(m.codigo)}')">${esc(m.nome)}</button>`).join("")).join("")
+    + `<button type="button" class="mpk-o" onclick="mpkEscolher('${id}','__outro')">+ Outro material (escrever)…</button>`;
+}
+function mpkEscolher(id, v){
+  const s = document.getElementById(id); if(!s) return; s.value = v; s.dispatchEvent(new Event("change"));
+  const lb = document.getElementById(id + "_lbl"); if(lb) lb.textContent = v === "__outro" ? "Outro material (escrever)…" : (S.mat[v] || {}).nome || "— Escolher material —";
+  const p = document.getElementById(id + "_pp"); if(p) p.style.display = "none";
+  if(v === "__outro"){ const n = document.getElementById(id === "p_sel" ? "p_nome" : "tw_nome"); if(n){ n.style.display = ""; n.focus(); } }
+  else { const q = document.getElementById(id === "p_sel" ? "p_qtd" : "tw_qtd"); if(q){ if(!q.value) q.value = 1; } }
+}
+// quando o estado do formulário é reposto (ou limpo), o rótulo acompanha o valor escondido
+function mpkSync(){ for(const id of ["p_sel", "tw_sel"]){ const s = document.getElementById(id), lb = document.getElementById(id + "_lbl"); if(s && lb) lb.textContent = !s.value ? "— Escolher material —" : s.value === "__outro" ? "Outro material (escrever)…" : (S.mat[s.value] || {}).nome || s.value; } }
 function pendingPart(){
   const sel = document.getElementById("p_sel"); const qt = parseFloat(val("p_qtd")) || 1;
   if(sel && sel.value && sel.value !== "__outro"){ const m = S.mat[sel.value]; if(m) return {n: m.nome, c: m.codigo, q: qt, ...lerFat("p")}; }
   const n = val("p_nome"); return n ? {n, q: qt, ...lerFat("p")} : null;
 }
-function clearPart(){ const sel = $("#p_sel"), a = $("#p_nome"), b = $("#p_qtd"); if(sel) sel.value = ""; if(a){ a.value = ""; a.style.display = matList().length ? "none" : ""; } if(b) b.value = ""; }
+function clearPart(){ const sel = $("#p_sel"), a = $("#p_nome"), b = $("#p_qtd"); if(sel){ sel.value = ""; setTimeout(mpkSync); } if(a){ a.value = ""; a.style.display = matList().length ? "none" : ""; } if(b) b.value = ""; }
 function onPartSel(v){ const a = $("#p_nome"); if(!a) return; a.style.display = v === "__outro" ? "" : "none"; if(v === "__outro") a.focus(); else if(v) { const q = $("#p_qtd"); if(q && !q.value) q.value = 1; } }
 const EUR = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" });
 const eur = v => EUR.format(Number(v) || 0);
@@ -1059,7 +1084,7 @@ function openSheet(title, html, refresh){
   else if(!$("#scrim").classList.contains("open") && !sheetHist){ try{ history.pushState({ sheet: 1 }, ""); sheetHist = true; }catch(e){} }
   $("#sheet").innerHTML = `<div class="top"><h4>${title}</h4><button class="x" onclick="closeSheet()" aria-label="Fechar">×</button></div><div class="body">${html}</div>`;
   $("#scrim").classList.add("open"); $("#sheet").scrollTop = 0;
-  sheetRefresh = refresh ? () => { const m = guardarForm(); const y = $("#sheet").scrollTop; refresh(); reporForm(m); $("#sheet").scrollTop = y; } : null;
+  sheetRefresh = refresh ? () => { const m = guardarForm(); const y = $("#sheet").scrollTop; refresh(); reporForm(m); mpkSync(); $("#sheet").scrollTop = y; } : null;
 }
 function hideSheet(){ $("#scrim").classList.remove("open"); sheetRefresh = null; }
 function closeSheet(){ DIAS_RASC = {}; hideSheet(); if(sheetHist && !pendingBack) pendingBack = setTimeout(() => { pendingBack = null; if(sheetHist && !$("#scrim").classList.contains("open")){ sheetHist = false; histBack(); } }, 0); }
@@ -2124,7 +2149,7 @@ function openOt(id){
         ${fotos.length ? `<div class="fotos">${fotos.map(ph => `<div class="ph" onclick="viewFoto('${esc(ph)}')">${URLS[ph]?`<img src="${esc(URLS[ph])}" alt="" loading="lazy">`:""}${mine?`<button onclick="event.stopPropagation();rmFoto('${id}','${esc(ph)}')" aria-label="Remover">✕</button>`:""}</div>`).join("")}</div>` : '<div style="color:var(--muted);font-size:14px;margin-top:4px">Sem fotografias. Tire fotos do antes e do depois.</div>'}</div>`}
       ${isExt(o) ? "" : `<div class="panel"><b>Peças / materiais usados</b>
         <div class="parts" style="margin-top:6px">${(o.pecas||[]).map((x,i)=>`<div class="part"><span class="n">${esc(x.n)}${x.c?` <span class="mono" style="color:var(--muted);font-size:12px">${esc(x.c)}</span>`:""} ${fatTag(x)}</span><span class="mono">× ${esc(x.q)}</span>${IS_ADMIN?`<input inputmode="decimal" title="Preço unitário" value="${unitPrice(x)!==null?String(unitPrice(x)).replace(".", ","):""}" placeholder="€/un" onchange="setPartPrice('${id}',${i},this.value)" style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff"><span class="mono" style="min-width:64px;text-align:right">${lineTotal(x)!==null?eur(lineTotal(x)):"—"}</span>`:""}<button class="btn sm" onclick="rmPart('${id}',${i})" aria-label="Remover">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Nenhuma peça registada.</span>'}${IS_ADMIN && (o.pecas||[]).length ? `<div class="part" style="border-top:1px solid var(--line);padding-top:6px;font-weight:600"><span class="n">Total materiais</span><span class="mono">${eur(partsTotal(o.pecas||[]))}</span></div>` : ""}</div>
-        ${matList().length ? `<select id="p_sel" class="search" style="margin:8px 0 0" onchange="onPartSel(this.value)"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)} · ${esc(m.codigo)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
+        ${matList().length ? matPicker("p_sel", "onPartSel(this.value)", true) : ""}
         <div class="addpart"><input id="p_nome" placeholder="Nome do material" style="${matList().length?"display:none":""}" onkeydown="if(event.key==='Enter')addPart('${id}')"><input id="p_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addPart('${id}')"><button class="btn sm" onclick="addPart('${id}')">Adicionar</button></div>${fatCampos("p")}</div>
       ${sm ? (IS_ADMIN ? `<div class="panel" style="background:#fbf8f2"><b>Valores</b> <span style="font-size:12px;color:var(--muted)">(só material — mão de obra noutra folha)</span><div class="parts" style="margin-top:6px"><div class="part"><span class="n">Materiais</span><span class="mono">${eur(valores(o).mat)}</span></div></div></div>` : "") : `
       <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${o.soMaterial===true?"checked":""} onchange="setSoMaterial('${id}', this.checked)" style="width:22px;height:22px;accent-color:var(--accent)"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Marque quando só foi deixar material, sem fazer trabalho no local.</span></span></label>
@@ -2681,7 +2706,7 @@ function openTrabalho(cid){
     <label class="f"><span>O que foi feito${smMe ? "" : " *"}</span><input id="tw_tit" placeholder="${smMe ? "Opcional — ex.: material aplicado no hall" : "Ex.: Manutenção geral, troca de lâmpadas no 3º"}"></label>
     <label class="f"><span>Zona / fração</span><input id="tw_zona" placeholder="Ex.: escadas, garagem -1, 2º esq."></label>
     <div class="panel"><b>Material usado</b><div id="tw_lines" class="parts" style="margin-top:6px"></div>
-      ${matList().length ? `<select id="tw_sel" class="search" style="margin:8px 0 0" onchange="document.getElementById('tw_nome').style.display=this.value==='__outro'?'':'none'"><option value="">— Escolher material —</option>${matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}</option>`).join("")}<option value="__outro">Outro material (escrever)…</option></select>` : ""}
+      ${matList().length ? matPicker("tw_sel", "document.getElementById('tw_nome').style.display=this.value==='__outro'?'':'none'") : ""}
       <div class="addpart"><input id="tw_nome" placeholder="Nome do material" style="${matList().length ? "display:none" : ""}"><input id="tw_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addTwLine()"><button class="btn sm" onclick="addTwLine()">Adicionar</button></div>${fatCampos("tw")}</div>
 ${smMe ? "" : `    <label class="panel" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="tw_so" style="width:22px;height:22px;accent-color:var(--accent)" onchange="document.getElementById('tw_tempo').style.display=this.checked?'none':''"><span><b>Só entrega de material</b><br><span style="font-size:13px;color:var(--muted)">Só deixou material, sem fazer trabalho.</span></span></label>
     <div id="tw_tempo">
@@ -2703,7 +2728,7 @@ function addTwLine(){
   const fat = lerFat("tw");
   if(sel && sel !== "__outro"){ const m = S.mat[sel]; if(m) twLines.push({ c: m.codigo, n: m.nome, q, ...fat }); }
   else { const n = val("tw_nome"); if(!n){ toast("Escolha o material."); return; } twLines.push({ n, q, ...fat }); $("#tw_nome").value = ""; }
-  if($("#tw_sel")) $("#tw_sel").value = ""; if($("#tw_nome") && matList().length) $("#tw_nome").style.display = "none"; $("#tw_qtd").value = ""; drawTwLines();
+  if($("#tw_sel")) $("#tw_sel").value = ""; if($("#tw_nome") && matList().length) $("#tw_nome").style.display = "none"; $("#tw_qtd").value = ""; drawTwLines(); mpkSync();
 }
 function twDiasMud(){ const n = lerDias("tw_dias").filter(x => x.m > 0).length; const d = $("#tw_d"); if(d && n > 1 && (parseInt(d.value) || 0) < n) d.value = n; }
 async function saveTrabalho(concluir){
@@ -2817,7 +2842,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
