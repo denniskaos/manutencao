@@ -2630,8 +2630,9 @@ async function doBatchPrint(){
   if(withSum){
     const groups = {}; for(const o of list){ const k = o.tecnico || ""; (groups[k] ||= []).push(o); }
     const aggMats = os => { const m = {}; for(const o of os) for(const x of (o.pecas || [])){ const k = x.c || x.n; if(!m[k]) m[k] = { n: x.n, c: x.c, q: 0, v: 0 }; m[k].q += Number(x.q) || 0; m[k].v += lineTotal(x) || 0; } return Object.values(m).sort((a,b) => a.n.localeCompare(b.n, "pt")); };
-    const matsTxt = arr => arr.map(x => `${String(x.q).replace(".", ",")}× ${esc(x.n + fatTxt(x))}`).join("<br>");
-    const hrs = min => `${Math.floor(min/60)}h${pad(min%60)} <span style="color:#555">(${(min/60).toFixed(2).replace(".", ",")} h)</span>`;
+    // materiais seguidos, separados por vírgulas (ocupa muito menos altura); horas só em "1h30"
+    const matsTxt = arr => arr.map(x => `<span style="white-space:nowrap">${String(x.q).replace(".", ",")}×</span> ${esc(x.n + fatTxt(x))}`).join(", ");
+    const hrs = min => `<span style="white-space:nowrap">${Math.floor(min/60)}h${pad(min%60)}</span>`;
     let grand = 0, gMin = 0, gDesl = 0;
     const secs = Object.entries(groups).map(([t, os]) => {
       const sum = os.reduce((a, o) => { const v = valores(o); a.tot += v.total; a.mo += v.mo; a.desl += v.desl; a.nd += v.nd; a.mat += v.mat; a.ex += v.ex; a.min += v.so ? 0 : (Number(o.tempo) || 0); return a; }, { tot: 0, mo: 0, desl: 0, nd: 0, mat: 0, ex: 0, min: 0 });
