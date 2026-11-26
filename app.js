@@ -187,6 +187,7 @@ async function loadAll(uid){
     S.tarTec = Object.fromEntries((tt || []).map(x => [x.user_id, { hora1: Number(x.hora1), hora: Number(x.hora) }]));
   }
   await loadStock();
+  if(temFolha(ME)){ fhIni = segDe(today()); try{ await carregarHoras(ME, addDays(fhIni, -28), addDays(fhIni, 6)); }catch(e){ console.warn(e); } }
   const sy = $("#sync"); if(sy && sy.textContent === "A atualizar…") sy.textContent = "";
   loadMeteo(); setInterval(() => loadMeteo(), 30 * 60 * 1000);
   mode = "ok";
@@ -657,6 +658,7 @@ function viewInicio(){
     const mes = mine.filter(o => o.estado === "concluida" && (o.concluida||"").slice(0,7) === t.slice(0,7)).length;
     const first = ((S.equipa[ME]||{}).nome||"").split(" ")[0];
     return `<h2>Olá${first?", "+esc(first):""} <span class="mono" style="font-size:14px;color:var(--muted)">${fmtDate(t)}</span></h2>${meteoAviso()}${installBanner()}${pushBanner()}${(S.equipa[ME]||{}).assinatura ? "" : `<div class="note" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>Guarde a sua assinatura para ela sair nos relatórios.</span><button class="btn sm pri" onclick="openPerfil()">Assinar</button></div>`}
+    ${folhaBloco()}
     <div class="stats">
       ${statCard(hoje.length, "Para hoje / em atraso", "otFilter='ativas';go('ordens')", true)}
       ${statCard(mine.filter(o=>o.estado==="curso").length, "Em curso", "otFilter='curso';go('ordens')")}
@@ -1266,9 +1268,11 @@ function openPessoa(id){
       <div class="grid2"><label class="f" style="margin:0"><span>1.ª hora (€)</span><input id="tt_h1" inputmode="decimal" value="${tt ? String(tt.hora1).replace(".", ",") : ""}" placeholder="Ex.: 40"></label>
       <label class="f" style="margin:0"><span>Horas seguintes (€/h)</span><input id="tt_h" inputmode="decimal" value="${tt ? String(tt.hora).replace(".", ",") : ""}" placeholder="Ex.: 20"></label></div>
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="setTarTec('${id}')">Guardar tarifa</button></div></div>`; })() : ""}
+    ${x.folhaHoras && IS_ADMIN ? `<h3>Folha de horas</h3><div class="panel"><div class="actions" style="margin:0"><button class="btn pri" onclick="fhIni='';openFolha('${id}')"><i class=ico-clip></i>Ver folha de horas${VE_STOCK() ? " e declaração" : ""}</button></div></div>` : ""}
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
+      ${!self && IS_ADMIN && x.papel !== "admin" ? `<button class="btn" onclick="setFolhaHoras('${id}', ${!x.folhaHoras})"><i class=ico-clip></i>${x.folhaHoras ? "Desligar folha de horas" : "Ativar folha de horas"}</button>` : ""}
       ${!self && IS_ADMIN && x.papel !== "admin" ? `<button class="btn" onclick="setSoRegMat('${id}', ${!x.soRegistaMaterial})">${x.soRegistaMaterial ? "Registar tudo (tempo, notas, fotos)" : "Só regista material"}</button>` : ""}
       ${!self && VE_STOCK() ? `<button class="btn" onclick="setOculto('${id}', ${!x.oculto})"><i class=ico-lock></i>${x.oculto ? "Mostrar a todos" : "Conta de teste (só eu vejo)"}</button>` : ""}
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="${x.ativo ? `openDesativar('${id}')` : `armDelete(this,()=>setAtivo('${id}',true))`}">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
@@ -1329,6 +1333,127 @@ async function desativarPassar(id){
   await setAtivo(id, false);
   const partes = [d.ots.length && d.ots.length + (d.ots.length === 1 ? " ordem" : " ordens"), d.pls.length && d.pls.length + (d.pls.length === 1 ? " plano" : " planos"), d.zonas.length && "zona " + d.zonas.join(", "), d.cars.length && "carrinha"].filter(Boolean);
   if(partes.length) setTimeout(() => toast("Conta desativada. " + partes.join(", ") + (para ? " → " + nm(para) : " ficaram por atribuir") + "."), 900);
+}
+
+/* ---------- folha de horas (técnicos com "folha_horas": ex. Jorge Meireles) ----------
+   Regista-se prédio/tarefa, entrada, saída e descrição; o total sai sozinho (sem desconto de almoço,
+   porque o almoço já vem escrito à parte). Imprime-se a folha (sem valores) e, só o dono, a declaração. */
+S.horas = {}; let fhIni = "", fhTec = "";
+const segDe = d => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
+const hm = m => { m = Math.round(Number(m) || 0); return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0"); };
+const minEntre = (a, b) => { if(!a || !b) return 0; const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number); let t = h2 * 60 + m2 - (h1 * 60 + m1); if(t < 0) t += 1440; return t; };
+const DSEM = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const diaCurto = d => DSEM[new Date(d + "T12:00:00").getDay()] + " " + fmtDate(d).slice(0, 5);
+const localH = h => h.condoId && S.condos[h.condoId] ? cLabel(S.condos[h.condoId]) : (h.local || "—");
+const temFolha = id => !!(S.equipa[id] || {}).folhaHoras;
+async function carregarHoras(tec, ini, fim){
+  let data, error; try{ ({ data, error } = await sb.from("horas").select("*").eq("tecnico", tec).gte("dia", ini).lte("dia", fim)); }catch(e){ error = e; }
+  if(error){ toast("Não foi possível ler as horas."); return []; }
+  for(const k of Object.keys(S.horas)){ const h = S.horas[k]; if(h.tecnico === tec && h.dia >= ini && h.dia <= fim) delete S.horas[k]; }
+  for(const r of data || []) S.horas[r.id] = fromRow(r);
+  return data || [];
+}
+const horasDe = (tec, ini, fim) => Object.values(S.horas).filter(h => h.tecnico === tec && h.dia >= ini && h.dia <= fim).sort((a, b) => a.dia.localeCompare(b.dia) || (a.entrada || "").localeCompare(b.entrada || ""));
+// bloco no ecrã Hoje do técnico
+function folhaBloco(){
+  if(!temFolha(ME)) return "";
+  if(!fhIni) fhIni = segDe(today());
+  const fim = addDays(fhIni, 6); const l = horasDe(ME, fhIni, fim); const tot = l.reduce((a, h) => a + (h.minutos || 0), 0);
+  const dias = {}; for(const h of l) (dias[h.dia] ||= []).push(h);
+  return `<div class="actions" style="margin:4px 0 12px"><button class="btn pri" style="flex:1;justify-content:center" onclick="openHora()"><i class=ico-clip></i>Registar horas</button></div>
+    <h3>Folha de horas</h3>
+    <div class="fh-sem"><button class="btn sm" onclick="fhMover(-7)">‹</button><b>Semana ${fmtDate(fhIni).slice(0, 5)} a ${fmtDate(fim).slice(0, 5)}</b><button class="btn sm" onclick="fhMover(7)">›</button></div>
+    <div class="fh-tot"><div><b>${hm(tot)}</b><span>Horas na semana</span></div><div><b>${new Set(l.map(localH)).size}</b><span>Prédios / tarefas</span></div></div>
+    ${l.length ? Object.keys(dias).sort().reverse().map(d => `<div class="fh-dia"><span>${diaCurto(d)}</span><span>${hm(dias[d].reduce((a, h) => a + h.minutos, 0))}</span></div>` + dias[d].map(h => `<div class="fh-r" onclick="openHora('${h.id}')"><span class="p">${esc(localH(h))}</span><span class="t">${hm(h.minutos)}</span><span class="h">${esc(h.entrada)} – ${esc(h.saida)}</span><span></span>${h.descricao ? `<span class="d">${esc(h.descricao)}</span>` : ""}</div>`).join("")).join("")
+      : `<div class="list">${emptyBox("Sem horas registadas nesta semana.")}</div>`}
+    <div class="actions" style="margin:8px 0 18px"><button class="btn" onclick="printFolha('${ME}', fhIni, addDays(fhIni, 6))"><i class=ico-print></i>Imprimir folha da semana</button></div>`;
+}
+async function fhMover(d){ fhIni = addDays(fhIni || segDe(today()), d); await carregarHoras(fhTec || ME, fhIni, addDays(fhIni, 6)); if(fhTec && $("#fhAdm")) openFolha(fhTec); else render(); }
+function openHora(id, tec){
+  const h = id ? S.horas[id] : null; tec = tec || (h && h.tecnico) || ME;
+  const dia = h ? h.dia : (window.__fhUltDia || today());
+  openSheet(h ? "Corrigir horas" : "Registar horas" + (tec !== ME ? " — " + esc(nm(tec)) : ""), `
+    <label class="f"><span>Dia</span><input id="h_dia" type="date" value="${esc(dia)}"></label>
+    ${condoPicker(h ? h.condoId || "" : "")}
+    <label class="f"><span>Ou outra tarefa (sem prédio)</span><input id="h_local" value="${esc(h && !h.condoId ? h.local : "")}" placeholder="Ex.: Armazém, compras, escritório…"></label>
+    <div class="grid2"><label class="f"><span>Entrada</span><input id="h_ent" type="time" value="${esc(h ? h.entrada : "")}" oninput="hTot()"></label><label class="f"><span>Saída</span><input id="h_sai" type="time" value="${esc(h ? h.saida : "")}" oninput="hTot()"></label></div>
+    <div id="h_tot" class="mono" style="font-weight:700;font-size:18px;margin:-4px 0 10px">${h ? "Total: " + hm(h.minutos) : ""}</div>
+    <label class="f"><span>Descrição do serviço</span><textarea id="h_desc" rows="2" placeholder="Ex.: Limpeza das escadas e hall">${esc(h ? h.descricao : "")}</textarea></label>
+    <div class="actions" style="flex-wrap:wrap">${h ? `<button class="btn danger" onclick="armDelete(this,()=>apagarHora('${h.id}'))">Apagar</button>` : `<button class="btn" onclick="closeSheet()">Cancelar</button>`}<span class="sp"></span>
+      ${h ? "" : `<button class="btn" onclick="guardarHora(null,'${tec}',true)">Guardar e registar outra</button>`}<button class="btn pri" onclick="guardarHora(${h ? `'${h.id}'` : "null"},'${tec}',false)">Guardar</button></div>`);
+}
+function hTot(){ const m = minEntre(val("h_ent"), val("h_sai")); const e = $("#h_tot"); if(e) e.textContent = m ? "Total: " + hm(m) : ""; }
+async function guardarHora(id, tec, outra){
+  const dia = val("h_dia"), cid = val("f_condo"), local = val("h_local"), ent = val("h_ent"), sai = val("h_sai");
+  if(!dia || !(cid || local) || !ent || !sai){ toast("Indique o dia, o prédio (ou a tarefa), a entrada e a saída."); return; }
+  const m = minEntre(ent, sai); if(!m){ toast("A saída tem de ser depois da entrada."); return; }
+  const r = { id: id || newId(), tecnico: tec, dia, condo_id: cid || null, local: cid ? "" : local, entrada: ent, saida: sai, minutos: m, descricao: val("h_desc") };
+  const { error } = await sb.from("horas").upsert(r); if(error){ writeErr(error); return; }
+  S.horas[r.id] = fromRow(r); window.__fhUltDia = dia;
+  if(segDe(dia) !== fhIni) fhIni = segDe(dia);
+  toast("Horas guardadas (" + hm(m) + ").");
+  if(outra){ openHora(null, tec); } else if(fhTec){ openFolha(fhTec); } else { closeSheet(); render(); }
+}
+async function apagarHora(id){ const h = S.horas[id]; const { error } = await sb.from("horas").delete().eq("id", id); if(error){ writeErr(error); return; } delete S.horas[id]; toast("Registo apagado."); if(fhTec) openFolha(fhTec); else { closeSheet(); render(); } }
+// escritório: ver a semana de um técnico, imprimir a folha e (só o dono) a declaração
+async function openFolha(tec, ini){
+  fhTec = tec; if(ini) fhIni = ini; if(!fhIni) fhIni = segDe(today());
+  const fim = addDays(fhIni, 6);
+  if(!horasDe(tec, fhIni, fim).length) await carregarHoras(tec, fhIni, fim);
+  const l = horasDe(tec, fhIni, fim); const tot = l.reduce((a, h) => a + h.minutos, 0);
+  openSheet("Folha de horas — " + esc(nm(tec)), `<div id="fhAdm"></div>
+    <div class="fh-sem"><button class="btn sm" onclick="fhMover(-7)">‹ Anterior</button><b>Semana de ${fmtDate(fhIni)} a ${fmtDate(fim)}</b><button class="btn sm" onclick="fhMover(7)">Seguinte ›</button></div>
+    <div class="fh-tot"><div><b>${hm(tot)}</b><span>Horas na semana</span></div><div><b>${new Set(l.map(localH)).size}</b><span>Prédios / tarefas</span></div><div><b>${new Set(l.map(h => h.dia)).size}</b><span>Dias com registo</span></div></div>
+    ${l.length ? `<div style="overflow-x:auto"><table class="fh"><tr><th>Dia</th><th>Prédio / tarefa</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Descrição do serviço</th></tr>${l.map(h => `<tr onclick="openHora('${h.id}')" style="cursor:pointer"><td class="m">${diaCurto(h.dia)}</td><td>${esc(localH(h))}</td><td class="m">${esc(h.entrada)}</td><td class="m">${esc(h.saida)}</td><td class="m">${hm(h.minutos)}</td><td>${esc(h.descricao)}</td></tr>`).join("")}<tr class="tt"><td colspan="4">Total da semana</td><td class="m">${hm(tot)}</td><td></td></tr></table></div>` : `<div class="list">${emptyBox("Sem horas registadas nesta semana.")}</div>`}
+    <div class="actions" style="margin-top:12px;flex-wrap:wrap"><button class="btn" onclick="fhTec='';closeSheet()">Fechar</button><span class="sp"></span><button class="btn" onclick="openHora(null,'${tec}')">+ Registar horas</button><button class="btn" onclick="printFolha('${tec}', fhIni, addDays(fhIni, 6))"><i class=ico-print></i>Imprimir semana</button>${VE_STOCK() ? `<button class="btn pri" onclick="openDeclaracao('${tec}')"><i class=ico-print></i>Declaração</button>` : ""}</div>
+    <h3>Imprimir outro período</h3><div class="panel"><div class="grid2"><label class="f" style="margin:0"><span>De</span><input id="fp_de" type="date" value="${esc(fhIni)}"></label><label class="f" style="margin:0"><span>Até</span><input id="fp_ate" type="date" value="${esc(fim)}"></label></div>
+    <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="printFolha('${tec}', val('fp_de'), val('fp_ate'))"><i class=ico-print></i>Imprimir folha</button></div></div>`);
+}
+async function printFolha(tec, ini, fim){
+  if(!ini || !fim || fim < ini){ toast("Escolha as datas."); return; }
+  await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim); const tot = l.reduce((a, h) => a + h.minutos, 0);
+  const porDia = {}; for(const h of l) porDia[h.dia] = (porDia[h.dia] || 0) + h.minutos;
+  await printHtml(`<div class="pr"><div class="hd"><div class="lg">${prLogo()}<div><h1>Folha de horas</h1><div>${esc(nm(tec))}</div></div></div><div class="meta">${ini === segDe(ini) && fim === addDays(ini, 6) ? "Semana de " : "De "}${fmtDate(ini)} a ${fmtDate(fim)}</div></div>
+    <table><tr><th style="width:72px;white-space:nowrap">Dia</th><th>Prédio / tarefa</th><th style="width:50px">Entrada</th><th style="width:50px">Saída</th><th style="width:48px">Total</th><th>Descrição do serviço</th></tr>
+    ${l.map(h => `<tr><td style="white-space:nowrap">${diaCurto(h.dia)}</td><td>${esc(localH(h))}</td><td>${esc(h.entrada)}</td><td>${esc(h.saida)}</td><td><b>${hm(h.minutos)}</b></td><td>${esc(h.descricao)}</td></tr>`).join("") || `<tr><td colspan="6">Sem registos neste período.</td></tr>`}
+    <tr><th colspan="4" style="text-align:right">Total</th><th>${hm(tot)}</th><th></th></tr></table>
+    ${Object.keys(porDia).length ? `<p style="font-size:9pt;color:#555;margin-top:8px">${Object.keys(porDia).sort().map(d => diaCurto(d) + ": " + hm(porDia[d])).join(" · ")}</p>` : ""}</div>`);
+}
+async function openDeclaracao(tec){
+  if(!VE_STOCK()) return;
+  const { data } = await sb.from("folha_valor").select("valor").eq("user_id", tec).maybeSingle();
+  const t = today(); const de = t.slice(0, 8) + "01";
+  openSheet("Declaração — " + esc(nm(tec)), `<p style="margin-top:0;font-size:14px;color:var(--muted)">Resumo por prédio e por semana, com o valor a receber. Só aparece para si.</p>
+    <div class="grid2"><label class="f"><span>De</span><input id="dc_de" type="date" value="${segDe(de)}"></label><label class="f"><span>Até</span><input id="dc_ate" type="date" value="${t}"></label></div>
+    <div class="grid2"><label class="f"><span>Valor por hora (€)</span><input id="dc_v" inputmode="decimal" value="${data ? String(data.valor).replace(".", ",") : ""}" placeholder="Ex.: 5,50"></label><label class="f"><span>Local (para a data)</span><input id="dc_loc" value="${esc(lsGet("declLocal") || "")}" placeholder="Ex.: Freamunde"></label></div>
+    <div class="actions"><button class="btn" onclick="openFolha('${tec}')">Voltar</button><span class="sp"></span><button class="btn pri" onclick="printDeclaracao('${tec}')"><i class=ico-print></i>Imprimir declaração</button></div>`);
+}
+async function printDeclaracao(tec){
+  const ini = val("dc_de"), fim = val("dc_ate"), v = parseFloat((val("dc_v") || "").replace(",", ".")) || 0, loc = val("dc_loc"); lsSet("declLocal", loc);
+  if(!ini || !fim || fim < ini){ toast("Escolha as datas."); return; }
+  await sb.from("folha_valor").upsert({ user_id: tec, valor: v });
+  await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim);
+  const sems = []; for(let d = segDe(ini); d <= fim; d = addDays(d, 7)) sems.push(d);
+  const lin = {}; for(const h of l){ const k = localH(h); (lin[k] ||= {}); const s0 = segDe(h.dia); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
+  const n1 = x => x ? (x / 60).toFixed(1) : "";
+  const totS = s0 => l.filter(h => segDe(h.dia) === s0).reduce((a, h) => a + h.minutos, 0);
+  const totH = l.reduce((a, h) => a + h.minutos, 0) / 60; const totE = Math.round(totH * v * 100) / 100;
+  const sl = s0 => { const a = s0 < ini ? ini : s0, b = addDays(s0, 6) > fim ? fim : addDays(s0, 4) < fim ? addDays(s0, 4) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
+  const ext = d => { const x = new Date(d + "T12:00:00"); return x.getDate() + " de " + x.toLocaleDateString("pt-PT", { month: "long" }) + (d.slice(0, 4) !== fim.slice(0, 4) || d === fim ? " de " + d.slice(0, 4) : ""); };
+  await printHtml(`<div class="pr"><div class="hd"><div class="lg">${prLogo()}</div><div class="meta">${esc(loc)}</div></div>
+    <h1 style="text-align:center;margin-top:10px">DECLARAÇÃO</h1><p style="text-align:center;margin:2px 0 14px;color:#555;font-style:italic">Prestação de serviços de manutenção</p>
+    <p>Eu, ${esc(nm(tec))}, declaro que recebi a quantia de <b>${eur(totE)}</b> relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
+    <table><tr><th>Local / Tarefa</th>${sems.map(s0 => `<th style="text-align:center">${sl(s0)}</th>`).join("")}<th style="text-align:center">Total (h)</th></tr>
+    ${Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt")).map(k => `<tr><td>${esc(k)}</td>${sems.map(s0 => `<td style="text-align:center">${n1(lin[k][s0])}</td>`).join("")}<td style="text-align:center"><b>${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</b></td></tr>`).join("")}
+    <tr><th>Total por semana</th>${sems.map(s0 => `<th style="text-align:center">${n1(totS(s0)) || "0.0"}</th>`).join("")}<th style="text-align:center">${totH.toFixed(1)}</th></tr></table>
+    <table style="width:auto;margin:14px 0 0 auto"><tr><td>Total de horas</td><td style="text-align:right">${totH.toFixed(1)} h</td></tr><tr><td>Valor por hora</td><td style="text-align:right">${eur(v)}</td></tr><tr><th>Total a receber</th><th style="text-align:right">${eur(totE)}</th></tr></table>
+    <p style="margin-top:26px">${esc(loc)}${loc ? ", " : ""}____ de ________________ de ${fim.slice(0, 4)}</p>
+    <div style="display:flex;justify-content:space-between;margin-top:46px"><div style="border-top:1px solid #000;width:60mm;text-align:center;padding-top:3px">A Administração</div><div style="border-top:1px solid #000;width:70mm;text-align:center;padding-top:3px">O Colaborador<br><span style="font-size:9pt;color:#555">(${esc(nm(tec))})</span></div></div></div>`);
+}
+async function setFolhaHoras(id, v){
+  if(!IS_ADMIN) return;
+  const { error } = await sb.from("perfis").update({ folha_horas: v }).eq("id", id); if(error){ writeErr(error); return; }
+  S.equipa[id] = { ...S.equipa[id], folhaHoras: v }; closeSheet(); render(); toast(v ? nm(id) + " passa a ter folha de horas." : "Folha de horas desligada para " + nm(id) + ".");
 }
 async function setSoRegMat(id, v){
   if(!IS_ADMIN) return;
@@ -1519,9 +1644,9 @@ function editCondo(id){
     <label class="f"><span>Contacto</span><input id="c_contacto" value="${esc(c.contacto)}" placeholder="Telefone / e-mail"></label></div>
     <label class="f"><span>Nº de frações</span><input id="c_fracoes" type="number" min="0" value="${esc(c.fracoes)}" style="max-width:140px"></label>
     <div class="f"><span>Coordenadas (GPS) do prédio</span>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><input id="c_geo" value="${c.lat != null && c.lon != null ? c.lat + ", " + c.lon : ""}" placeholder="Ex.: 41.24123, -8.52901 — ou cole o link do Google Maps" style="flex:1 1 220px;min-width:0" oninput="geoInfo()">
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><input id="c_geo" value="${temGeo(c) ? c.lat + ", " + c.lon : ""}" placeholder="Ex.: 41.24123, -8.52901 — ou cole o link do Google Maps" style="flex:1 1 220px;min-width:0" oninput="geoInfo()">
       <button type="button" class="btn sm" onclick="geoAqui()"><i class=ico-pin></i>Usar a minha localização</button></div>
-      <div class="muted" id="c_geoinfo" style="font-size:12.5px;margin-top:4px">${c.lat != null ? (c.geoFonte === "local" ? "Confirmada no local." : "Aproximada (pela morada).") : "Serve para os técnicos escolherem o prédio pela localização (botão «Estou neste prédio»)."}</div></div>
+      <div class="muted" id="c_geoinfo" style="font-size:12.5px;margin-top:4px">${temGeo(c) ? (c.geoFonte === "local" ? "Confirmada no local." : "Aproximada (pela morada).") : "Serve para os técnicos escolherem o prédio pela localização (botão «Estou neste prédio»)."}</div></div>
     <label class="f"><span>Acessos e notas (visível para os técnicos)</span><textarea id="c_notas" placeholder="Onde estão as chaves, horários, contacto do porteiro, localização dos contadores…">${esc(c.notas)}</textarea></label>
     <div class="actions">${id?`<button class="btn danger" onclick="armDelete(this,()=>{delCondo('${id}')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="${id?`openCondo('${id}')`:"closeSheet()"}">Cancelar</button><button class="btn pri" onclick="saveCondo('${id||""}')">Guardar</button></div>`);
 }
@@ -1537,8 +1662,9 @@ function saveCondo(id){
 }
 // "41.24, -8.52", "41,24123 -8,52901", ou um link do Google Maps (…@41.24,-8.52,17z / ?q=41.24,-8.52)
 // link para o GPS (Google Maps abre a navegação; no iPhone/Android abre a app de mapas se existir)
-const rotaUrl = c => c && (c.lat != null && c.lon != null ? `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}` : c.morada ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.morada)}` : "");
-const rotaBtn = (c, cls) => rotaUrl(c) ? `<a class="btn ${cls || ""}" href="${rotaUrl(c)}" target="_blank" rel="noopener"><i class=ico-pin></i>Como chegar${c.lat != null ? "" : " (pela morada)"}</a>` : "";
+const temGeo = c => !!c && c.lat !== "" && c.lat != null && c.lon !== "" && c.lon != null && isFinite(+c.lat) && isFinite(+c.lon);
+const rotaUrl = c => c && (temGeo(c) ? `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}` : c.morada ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.morada)}` : "");
+const rotaBtn = (c, cls) => rotaUrl(c) ? `<a class="btn ${cls || ""}" href="${rotaUrl(c)}" target="_blank" rel="noopener"><i class=ico-pin></i>Como chegar${temGeo(c) ? "" : " (pela morada)"}</a>` : "";
 function lerCoords(t){
   t = (t || "").trim(); if(!t) return null;
   let m = t.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/) || t.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i) || t.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
@@ -1595,12 +1721,12 @@ function openCondo(id, startSub){
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`;
     }
     if(sub === "equip") content = `<div class="list">${eqs.length ? eqs.map(e => `<div class="item" onclick="openEquip('${e.id}')"><div class="bar"></div><div class="main"><div class="t">${esc(e.nome)}</div><div class="s">${esc([e.tipo, e.local].filter(Boolean).join(" · "))}</div></div></div>`).join("") : emptyBox("Sem equipamentos registados.")}</div>${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editEquip(null,'${id}')">+ Equipamento</button></div>`:""}`;
-    const maps = (c.lat != null || c.morada) ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat != null ? c.lat + "," + c.lon : c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
+    const maps = (temGeo(c) || c.morada) ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(temGeo(c) ? c.lat + "," + c.lon : c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
     const geoLinha = c.geoFonte === "local" ? `<div class="geol ok"><i class=ico-pin></i>Localização do prédio guardada${IS_ADMIN ? " · para corrigir, use Editar" : ""}</div>` : `<div class="geol"><button class="btn" onclick="guardarAqui('${id}')"><i class=ico-pin></i>Estou aqui — guardar localização</button><span>Carregue quando estiver no prédio.</span></div>`;
     return `<div class="panel"><dl class="kv">
       ${c.codigo?`<dt>Código</dt><dd class="mono">${esc(c.codigo)}</dd>`:""}
       <dt>Morada</dt><dd>${esc(c.morada||"—")}</dd>
-      ${c.lat != null && c.lon != null ? `<dt>Coordenadas</dt><dd class="mono">${c.lat}, ${c.lon}</dd>` : ""}
+      ${temGeo(c) ? `<dt>Coordenadas</dt><dd class="mono">${c.lat}, ${c.lon}</dd>` : ""}
       <dt>NIF</dt><dd class="mono">${esc(c.nif||"—")}</dd>
       ${c.admin?`<dt>Administração</dt><dd>${esc(c.admin)}</dd>`:""}
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
@@ -2675,7 +2801,7 @@ function detetarPredio(auto){
     const t2 = document.getElementById("aquiTxt"); if(!t2) return;
     const la = p.coords.latitude, lo = p.coords.longitude, ac = p.coords.accuracy || 999;
     POS_AQUI = { la, lo, ac };
-    const perto = Object.values(S.condos).filter(c => c.lat != null && c.lon != null).map(c => ({ c, d: distM(la, lo, c.lat, c.lon) })).sort((a, b) => a.d - b.d);
+    const perto = Object.values(S.condos).filter(c => temGeo(c)).map(c => ({ c, d: distM(la, lo, c.lat, c.lon) })).sort((a, b) => a.d - b.d);
     if(!perto.length){ t2.textContent = "Os prédios ainda não têm localização. Procure pelo nome."; return; }
     const m = x => x.d < 1000 ? Math.round(x.d / 10) * 10 + " m" : (x.d / 1000).toFixed(1).replace(".", ",") + " km";
     const p0 = perto[0], lim = (LIM_GEO[p0.c.geoFonte] || 0) + Math.min(ac, 150);
@@ -2697,7 +2823,7 @@ function autoDetetar(){
 }
 async function ensinarPosicao(cid){
   const c = S.condos[cid]; if(!POS_AQUI || !c || c.geoFonte === "local" || POS_AQUI.ac > 60) return;
-  if(c.lat != null && distM(POS_AQUI.la, POS_AQUI.lo, c.lat, c.lon) > 2000) return; // longe demais da morada: provavelmente não está no prédio
+  if(temGeo(c) && distM(POS_AQUI.la, POS_AQUI.lo, c.lat, c.lon) > 2000) return; // longe demais da morada: provavelmente não está no prédio
   try{ await sb.rpc("guardar_posicao_condo", { cid, la: POS_AQUI.la, lo: POS_AQUI.lo }); S.condos[cid] = { ...c, lat: +POS_AQUI.la.toFixed(5), lon: +POS_AQUI.lo.toFixed(5), geoFonte: "local" }; }catch(_){}
 }
 function openTrabalho(cid){
@@ -2853,7 +2979,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
