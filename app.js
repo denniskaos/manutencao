@@ -611,6 +611,12 @@ function porTipo(lista){
   if(ks.length === 1 && ks[0] === "Outros") return `<div class="list">${lista.map(o => otItem(o)).join("")}</div>`;
   return ks.map(k => `<div class="tipoh"><i class="ico-${ICO_TIPO[k] || "wrench"}"></i>${esc(k)}<span class="badge">${g[k].length}</span></div><div class="list">${g[k].map(o => otItem(o)).join("")}</div>`).join("");
 }
+// lista de um técnico (escritório): agrupada por tipo, cada grupo com as suas linhas
+function porTipoAdm(lista){
+  const g = {}; for(const o of lista){ const k = grupoOc(o); (g[k] ||= []).push(o); }
+  const ks = Object.keys(g).sort((a, b) => (a === "Outros") - (b === "Outros") || g[b].length - g[a].length);
+  return ks.map(k => `<div class="tipoh" style="margin:12px 10px 4px"><i class="ico-${ICO_TIPO[k] || "wrench"}"></i>${esc(k)}<span class="badge">${g[k].length}</span></div><div class="plist">${g[k].map(o => otRow(o, !!condoF)).join("")}</div>`).join("");
+}
 function viewInicio(){
   const t = today();
   if(!IS_ADMIN){
@@ -691,7 +697,7 @@ function viewOrdens(){
   ${otOrig === "entr" ? "" : `<div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>`}
   <div class="frow">${techFilterSel()}${condoFilterSel()}</div>
   <input class="search" placeholder="Procurar por nº, título, condomínio, zona…" value="${esc(q)}" oninput="q=this.value;renderListOnly()">
-  <div class="${IS_ADMIN ? "pgrp plain" : "list"}" id="lst">${list.length ? (IS_ADMIN ? `<div class="plist">${list.slice(0, listMax).map(o => otRow(o, !!condoF)).join("")}</div>${list.length > listMax ? `<div class="actions" style="justify-content:center;margin:8px 0"><button class="btn" onclick="listMax+=100;renderListOnly()">Mostrar mais (${list.length - listMax} restantes)</button></div>` : ""}` : list.map(o=>otItem(o, !!condoF)).join("")) : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
+  <div class="${IS_ADMIN ? "pgrp plain" : "list"}" id="lst">${list.length ? (IS_ADMIN && techF && techF !== "-" && otOrig !== "entr" ? porTipoAdm(list) : IS_ADMIN ? `<div class="plist">${list.slice(0, listMax).map(o => otRow(o, !!condoF)).join("")}</div>${list.length > listMax ? `<div class="actions" style="justify-content:center;margin:8px 0"><button class="btn" onclick="listMax+=100;renderListOnly()">Mostrar mais (${list.length - listMax} restantes)</button></div>` : ""}` : list.map(o=>otItem(o, !!condoF)).join("")) : emptyBox(any?"Nenhuma ordem corresponde ao filtro.":(IS_ADMIN?"Ainda não há ordens de trabalho.":"Ainda não tem ordens atribuídas."))}</div>`;
 }
 
 let prevF = "", prevTec = "", prevQ = "", prevOpen = null;
