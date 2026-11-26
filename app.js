@@ -373,15 +373,17 @@ function matPicker(id, onch, comCod){
   if(isIOS) return `<select id="${id}" class="search" style="margin:8px 0 0" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>`;
   return `<select id="${id}" style="display:none" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>
     <div class="mpk" id="${id}_pk"><button type="button" class="mpk-b" onclick="mpkAbrir('${id}')"><span id="${id}_lbl">— Escolher material —</span><span class="mpk-c">▾</span></button>
-    <div class="mpk-p" id="${id}_pp" style="display:none"><input class="search" id="${id}_q" placeholder="Procurar material…" autocomplete="off" oninput="mpkLista('${id}')"><div class="mpk-l" id="${id}_l"></div></div></div>`;
+    <div class="mpk-p" id="${id}_pp" style="display:none" onclick="if(event.target===this)mpkAbrir('${id}')"><div class="mpk-m"><input class="search" id="${id}_q" placeholder="Procurar…" autocomplete="off" oninput="mpkLista('${id}')"><div class="mpk-l" id="${id}_l"></div></div></div></div>`;
 }
 function mpkAbrir(id){ const p = document.getElementById(id + "_pp"); if(!p) return; const ab = p.style.display === "none"; p.style.display = ab ? "" : "none"; if(ab){ mpkLista(id); const q = document.getElementById(id + "_q"); if(q){ q.value = ""; mpkLista(id); } } }
 function mpkLista(id){
   const l = document.getElementById(id + "_l"); if(!l) return; const qq = val(id + "_q");
   const ms = matList().filter(m => !qq || hit(m.nome + " " + m.codigo + " " + (m.grupo || ""), qq));
   const g = {}; for(const m of ms){ const k = m.grupo || "Outros"; (g[k] ||= []).push(m); }
-  l.innerHTML = Object.entries(g).map(([k, a]) => `<div class="mpk-g">${esc(k)}</div>` + a.map(m => `<button type="button" onclick="mpkEscolher('${id}','${esc(m.codigo)}')">${esc(m.nome)}</button>`).join("")).join("")
-    + `<button type="button" class="mpk-o" onclick="mpkEscolher('${id}','__outro')">+ Outro material (escrever)…</button>`;
+  const cur = (document.getElementById(id) || {}).value || "";
+  const op = (v, t, cls) => `<button type="button" class="${cls || ""}${cur === v ? " on" : ""}" onclick="mpkEscolher('${id}','${esc(v)}')"><span class="ck">${cur === v ? "✓" : ""}</span>${t}</button>`;
+  l.innerHTML = (qq ? "" : op("", "— Escolher material —")) + Object.entries(g).map(([k, a]) => (Object.keys(g).length > 1 ? `<div class="mpk-g">${esc(k)}</div>` : "") + a.map(m => op(m.codigo, esc(m.nome))).join("")).join("")
+    + op("__outro", "Outro material (escrever)…", "mpk-o");
 }
 function mpkEscolher(id, v){
   const s = document.getElementById(id); if(!s) return; s.value = v; s.dispatchEvent(new Event("change"));

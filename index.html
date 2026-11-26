@@ -181,9 +181,12 @@ details.svcpick .chip.on{background:#fbefe2;border-color:var(--accent);color:var
 .fatn{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;background:#fff}
 .cres:empty{display:none}
 .mpk{margin:8px 0 0}.mpk-b{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:11px 12px;font:inherit;font-size:15px;color:var(--ink);text-align:left;cursor:pointer}.mpk-c{color:var(--muted);font-size:14px}
-.mpk-p{border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:6px;padding:8px}.mpk-p .search{margin:0 0 6px}
-.mpk-l{max-height:min(46vh,340px);overflow:auto;-webkit-overflow-scrolling:touch}.mpk-l button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 8px;font:inherit;font-size:15px;color:var(--ink);cursor:pointer}.mpk-l button:active{background:#f6efe5}
-.mpk-g{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 8px 4px}.mpk-l .mpk-o{color:var(--accent);font-weight:600;border-bottom:0}
+.mpk-p{position:fixed;inset:0;z-index:200;background:rgba(20,24,28,.18);display:flex;align-items:center;justify-content:center;padding:24px}
+.mpk-m{width:min(84vw,380px);max-height:72vh;display:flex;flex-direction:column;background:rgba(250,248,244,.97);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-radius:24px;box-shadow:0 18px 50px rgba(0,0,0,.28);overflow:hidden;padding:10px 0 6px}
+.mpk-m .search{margin:0 14px 6px;width:auto;border-radius:12px;padding:9px 12px;font-size:15px}
+.mpk-l{overflow:auto;-webkit-overflow-scrolling:touch}.mpk-l button{display:flex;align-items:center;width:100%;text-align:left;border:0;background:none;padding:12px 18px 12px 10px;font:inherit;font-size:17px;color:var(--ink);cursor:pointer}.mpk-l button:active{background:rgba(0,0,0,.06)}
+.mpk-l .ck{width:28px;flex:0 0 28px;text-align:center;font-weight:700}.mpk-l .mpk-o{color:var(--accent);font-weight:600}
+.mpk-g{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:12px 18px 2px 38px}
 .geol{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:4px}.geol .btn{width:100%;justify-content:center;white-space:normal}.geol span{font-size:12.5px;color:var(--muted);text-align:center}.geol.ok{font-size:12.5px;color:var(--muted);flex-direction:row;align-items:center}
 .aqui{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 10px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:#fbf7f1}.aqui .muted{font-size:13px;color:var(--muted);flex:1 1 200px}.aqui .schip{margin:4px 4px 0 0}
 .tipoh{display:flex;align-items:center;gap:4px;color:var(--ink);font-weight:700;font-size:14.5px;margin:14px 2px 6px}.tipoh .badge{margin-left:2px}.tipoh+.list{margin-bottom:4px}
@@ -366,7 +369,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=124"></script>
-<script type="module" src="app.js?v=124"></script>
+<script src="config.js?v=125"></script>
+<script type="module" src="app.js?v=125"></script>
 </body>
 </html>
