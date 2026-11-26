@@ -1393,7 +1393,7 @@ function openHora(id, tec){
 // tarefas sem prédio que se repetem: a reunião de manutenção (segunda de manhã) e as que já foram usadas
 function tarefasRapidas(tec){
   const usadas = {}; for(const h of Object.values(S.horas)) if(h.tecnico === tec && !h.condoId && h.local) usadas[h.local] = (usadas[h.local] || 0) + 1;
-  return ["Reunião de manutenção", ...Object.keys(usadas).sort((a, b) => usadas[b] - usadas[a])].filter((x, i, a) => a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).slice(0, 6);
+  return ["Reunião de manutenção", "Manutenção", ...Object.keys(usadas).sort((a, b) => usadas[b] - usadas[a])].filter((x, i, a) => a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).slice(0, 6);
 }
 function tarefaRapida(t){
   const i = $("#h_local"); if(i) i.value = t;
