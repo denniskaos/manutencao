@@ -1423,19 +1423,28 @@ async function printFolha(tec, ini, fim){
     <tr><th colspan="4" style="text-align:right">Total</th><th>${hm(tot)}</th><th></th></tr></table>
     ${Object.keys(porDia).length ? `<p style="font-size:9pt;color:#555;margin-top:8px">${Object.keys(porDia).sort().map(d => diaCurto(d) + ": " + hm(porDia[d])).join(" · ")}</p>` : ""}</div>`);
 }
+// último período já fechado: ex. dia 26 → de 26 do mês anterior até 25 deste mês (ou do anterior, se ainda não chegou ao 25)
+function periodoPago(di){
+  const t = today(); const [y, m, d] = t.split("-").map(Number);
+  if(di <= 1){ const ini = d >= 28 ? `${y}-${pad(m)}-01` : iso(new Date(y, m - 2, 1)); const [yy, mm] = ini.split("-").map(Number); return [ini, iso(new Date(yy, mm, 0))].map(x => x > t ? t : x); }
+  const fimMes = d >= di - 1 ? [y, m] : [m === 1 ? y - 1 : y, m === 1 ? 12 : m - 1];
+  const fim = iso(new Date(fimMes[0], fimMes[1] - 1, di - 1)); const ini = iso(new Date(fimMes[0], fimMes[1] - 2, di));
+  return [ini, fim];
+}
+window.periodoPago = periodoPago;
 async function openDeclaracao(tec){
   if(!VE_STOCK()) return;
-  const { data } = await sb.from("folha_valor").select("valor").eq("user_id", tec).maybeSingle();
-  const t = today(); const de = t.slice(0, 8) + "01";
+  const { data } = await sb.from("folha_valor").select("*").eq("user_id", tec).maybeSingle();
+  const di = (data && data.dia_inicio) || 1; const [de, ate] = periodoPago(di);
   openSheet("Declaração — " + esc(nm(tec)), `<p style="margin-top:0;font-size:14px;color:var(--muted)">Resumo por prédio e por semana, com o valor a receber. Só aparece para si.</p>
-    <div class="grid2"><label class="f"><span>De</span><input id="dc_de" type="date" value="${de}"></label><label class="f"><span>Até</span><input id="dc_ate" type="date" value="${t}"></label></div>
-    <div class="grid2"><label class="f"><span>Valor por hora (€)</span><input id="dc_v" inputmode="decimal" value="${data ? String(data.valor).replace(".", ",") : ""}" placeholder="Ex.: 5,50"></label><label class="f"><span>Local (para a data)</span><input id="dc_loc" value="${esc(lsGet("declLocal") || "")}" placeholder="Ex.: Freamunde"></label></div>
+    <div class="grid2"><label class="f"><span>De</span><input id="dc_de" type="date" value="${de}"></label><label class="f"><span>Até</span><input id="dc_ate" type="date" value="${ate}"></label></div>
+    <div class="grid2"><label class="f"><span>Valor por hora (€)</span><input id="dc_v" inputmode="decimal" value="${data ? String(data.valor).replace(".", ",") : ""}" placeholder="Ex.: 5,50"></label><label class="f"><span>O período começa no dia</span><input id="dc_di" type="number" min="1" max="28" value="${di}" onchange="const p=periodoPago(+this.value||1);dc_de.value=p[0];dc_ate.value=p[1]"></label></div><div class="grid2"><label class="f"><span>Local (para a data)</span><input id="dc_loc" value="${esc(lsGet("declLocal") || "")}" placeholder="Ex.: Freamunde"></label></div>
     <div class="actions"><button class="btn" onclick="openFolha('${tec}')">Voltar</button><span class="sp"></span><button class="btn pri" onclick="printDeclaracao('${tec}')"><i class=ico-print></i>Imprimir declaração</button></div>`);
 }
 async function printDeclaracao(tec){
   const ini = val("dc_de"), fim = val("dc_ate"), v = parseFloat((val("dc_v") || "").replace(",", ".")) || 0, loc = val("dc_loc"); lsSet("declLocal", loc);
   if(!ini || !fim || fim < ini){ toast("Escolha as datas."); return; }
-  await sb.from("folha_valor").upsert({ user_id: tec, valor: v });
+  await sb.from("folha_valor").upsert({ user_id: tec, valor: v, dia_inicio: Math.min(28, Math.max(1, parseInt(val("dc_di")) || 1)) });
   await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim);
   // semanas (seg–sex) que caem dentro do período; uma semana só com sábado/domingo no período fica de fora se não tiver horas
   const sems = []; for(let d = segDe(ini); d <= fim; d = addDays(d, 7)){ const a = d < ini ? ini : d, b = addDays(d, 4) < fim ? addDays(d, 4) : fim; if(a <= b || l.some(h => segDe(h.dia) === d)) sems.push(d); }
