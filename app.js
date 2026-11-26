@@ -1507,7 +1507,7 @@ async function printDeclaracao(tec){
   const n1 = x => x ? (x / 60).toFixed(1) : "";
   const totS = s0 => l.filter(h => segDe(h.dia) === s0).reduce((a, h) => a + h.minutos, 0);
   const totH = l.reduce((a, h) => a + h.minutos, 0) / 60; const totE = Math.round(totH * v * 100) / 100;
-  const sl = s0 => { const a = s0 < ini ? ini : s0; let b = addDays(s0, 4) < fim ? addDays(s0, 4) : fim; if(b < a) b = addDays(s0, 6) < fim ? addDays(s0, 6) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
+  const sl = s0 => { const a = s0 < ini ? ini : s0; let b = addDays(s0, 4) < fim ? addDays(s0, 4) : fim; if(b < a) b = addDays(s0, 6) < fim ? addDays(s0, 6) : fim; const ult = l.filter(h => segDe(h.dia) === s0).map(h => h.dia).sort().pop(); if(ult && ult > b) b = ult; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
   const ext = d => { const x = new Date(d + "T12:00:00"); return x.getDate() + " de " + x.toLocaleDateString("pt-PT", { month: "long" }) + (d.slice(0, 4) !== fim.slice(0, 4) || d === fim ? " de " + d.slice(0, 4) : ""); };
   const linhas = Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt"));
   const emp = S.empresa || {}; const cor = /^#[0-9a-f]{6}$/i.test(emp.cor || "") ? emp.cor : "#404040";
