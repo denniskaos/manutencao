@@ -369,6 +369,8 @@ const dlForn = () => document.getElementById("dl_mforn") ? "" : `<datalist id="d
 // um campo que abre por baixo uma lista curta, com procura e por grupos.
 function matPicker(id, onch, comCod){
   const ops = matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}${comCod ? " · " + esc(m.codigo) : ""}</option>`).join("");
+  // no iPhone a lista nativa é boa (roda por baixo), por isso fica a normal
+  if(isIOS) return `<select id="${id}" class="search" style="margin:8px 0 0" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>`;
   return `<select id="${id}" style="display:none" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>
     <div class="mpk" id="${id}_pk"><button type="button" class="mpk-b" onclick="mpkAbrir('${id}')"><span id="${id}_lbl">— Escolher material —</span><span class="mpk-c">▾</span></button>
     <div class="mpk-p" id="${id}_pp" style="display:none"><input class="search" id="${id}_q" placeholder="Procurar material…" autocomplete="off" oninput="mpkLista('${id}')"><div class="mpk-l" id="${id}_l"></div></div></div>`;
