@@ -1,6 +1,6 @@
 // Service worker: permite instalar a aplicação e receber notificações.
-const CACHE = "manutencao-v135";
-const SHELL = ["./", "./index.html", "./app.js?v=135", "./config.js?v=135", "./manifest.webmanifest", "./icone2-192.png", "./icone2-512.png"];
+const CACHE = "manutencao-v136";
+const SHELL = ["./", "./index.html", "./app.js?v=136", "./config.js?v=136", "./manifest.webmanifest", "./icone2-192.png", "./icone2-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}));
