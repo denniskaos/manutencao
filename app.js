@@ -1409,13 +1409,21 @@ async function openFolha(tec, ini){
   const fim = addDays(fhIni, 6);
   if(!horasDe(tec, fhIni, fim).length) await carregarHoras(tec, fhIni, fim);
   const l = horasDe(tec, fhIni, fim); const tot = l.reduce((a, h) => a + h.minutos, 0);
+  const dias = {}; for(const h of l) (dias[h.dia] ||= []).push(h);
+  const cartoes = Object.keys(dias).sort().map(d => `<div class="fh-dia"><span>${diaCurto(d)}</span><span>${hm(dias[d].reduce((a, h) => a + h.minutos, 0))}</span></div>` + dias[d].map(h => `<div class="fh-r" onclick="openHora('${h.id}')"><span class="p">${esc(localH(h))}</span><span class="t">${hm(h.minutos)}</span><span class="h">${esc(h.entrada)} – ${esc(h.saida)}</span><span></span>${h.descricao ? `<span class="d">${esc(h.descricao)}</span>` : ""}</div>`).join("")).join("");
   openSheet("Folha de horas — " + esc(nm(tec)), `<div id="fhAdm"></div>
-    <div class="fh-sem"><button class="btn sm" onclick="fhMover(-7)">‹ Anterior</button><b>Semana de ${fmtDate(fhIni)} a ${fmtDate(fim)}</b><button class="btn sm" onclick="fhMover(7)">Seguinte ›</button></div>
-    <div class="fh-tot"><div><b>${hm(tot)}</b><span>Horas na semana</span></div><div><b>${new Set(l.map(localH)).size}</b><span>Prédios / tarefas</span></div><div><b>${new Set(l.map(h => h.dia)).size}</b><span>Dias com registo</span></div></div>
-    ${l.length ? `<div style="overflow-x:auto"><table class="fh"><tr><th>Dia</th><th>Prédio / tarefa</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Descrição do serviço</th></tr>${l.map(h => `<tr onclick="openHora('${h.id}')" style="cursor:pointer"><td class="m">${diaCurto(h.dia)}</td><td>${esc(localH(h))}</td><td class="m">${esc(h.entrada)}</td><td class="m">${esc(h.saida)}</td><td class="m">${hm(h.minutos)}</td><td>${esc(h.descricao)}</td></tr>`).join("")}<tr class="tt"><td colspan="4">Total da semana</td><td class="m">${hm(tot)}</td><td></td></tr></table></div>` : `<div class="list">${emptyBox("Sem horas registadas nesta semana.")}</div>`}
-    <div class="actions" style="margin-top:12px;flex-wrap:wrap"><button class="btn" onclick="fecharFolha()">Fechar</button><span class="sp"></span><button class="btn" onclick="openHora(null,'${tec}')">+ Registar horas</button><button class="btn" onclick="printSemana('${tec}')"><i class=ico-print></i>Imprimir semana</button>${VE_STOCK() ? `<button class="btn pri" onclick="openDeclaracao('${tec}')"><i class=ico-print></i>Declaração</button>` : ""}</div>
-    <h3>Imprimir outro período</h3><div class="panel"><div class="grid2"><label class="f" style="margin:0"><span>De</span><input id="fp_de" type="date" value="${esc(fhIni)}"></label><label class="f" style="margin:0"><span>Até</span><input id="fp_ate" type="date" value="${esc(fim)}"></label></div>
-    <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="printPeriodo('${tec}')"><i class=ico-print></i>Imprimir folha</button></div></div>`);
+    <div class="fh-nav"><button class="btn sm" onclick="fhMover(-7)" aria-label="Semana anterior">‹</button><div><b>Semana ${fmtDate(fhIni).slice(0, 5)} a ${fmtDate(fim).slice(0, 5)}</b><span>${fhIni.slice(0, 4)}</span></div><button class="btn sm" onclick="fhMover(7)" aria-label="Semana seguinte">›</button></div>
+    <div class="fh-mini"><div><b>${hm(tot)}</b><span>horas</span></div><div><b>${new Set(l.map(localH)).size}</b><span>prédios</span></div><div><b>${new Set(l.map(h => h.dia)).size}</b><span>dias</span></div></div>
+    ${l.length ? `<div class="fh-cards">${cartoes}</div>
+      <div class="fh-tab"><table class="fh"><tr><th>Dia</th><th>Prédio / tarefa</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Descrição do serviço</th></tr>${l.map(h => `<tr onclick="openHora('${h.id}')" style="cursor:pointer"><td class="m">${diaCurto(h.dia)}</td><td>${esc(localH(h))}</td><td class="m">${esc(h.entrada)}</td><td class="m">${esc(h.saida)}</td><td class="m">${hm(h.minutos)}</td><td>${esc(h.descricao)}</td></tr>`).join("")}<tr class="tt"><td colspan="4">Total da semana</td><td class="m">${hm(tot)}</td><td></td></tr></table></div>`
+      : `<div class="list">${emptyBox("Sem horas registadas nesta semana.")}</div>`}
+    <div class="fh-acoes">
+      ${VE_STOCK() ? `<button class="btn pri" onclick="openDeclaracao('${tec}')"><i class=ico-print></i>Declaração</button>` : ""}
+      <div class="duo"><button class="btn" onclick="printSemana('${tec}')"><i class=ico-print></i>Imprimir semana</button><button class="btn" onclick="openHora(null,'${tec}')">+ Registar horas</button></div>
+    </div>
+    <details class="fh-outro"><summary>Imprimir outro período</summary>
+      <div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>De</span><input id="fp_de" type="date" value="${esc(fhIni)}"></label><label class="f" style="margin:0"><span>Até</span><input id="fp_ate" type="date" value="${esc(fim)}"></label></div>
+      <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="printPeriodo('${tec}')"><i class=ico-print></i>Imprimir folha</button></details>`);
 }
 function printSemana(tec){ const i = fhIni || segDe(today()); return printFolha(tec, i, addDays(i, 6)); }
 function printPeriodo(tec){ return printFolha(tec, val("fp_de"), val("fp_ate")); }
