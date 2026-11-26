@@ -603,6 +603,14 @@ function viewEstado(){
   return "";
 }
 
+// ordens agrupadas por tipo (videoporteiros, iluminação, infiltrações…), o tipo com mais ordens primeiro
+const ICO_TIPO = { "Infiltrações e águas": "drop", "Videoporteiros, campainhas e portas": "bell", "Portões e garagem": "gate", "Iluminação": "bulb", "Eletricidade": "bolt", "Placas e sinalização": "signp", "Elevadores": "lift", "Outros": "wrench" };
+function porTipo(lista){
+  const g = {}; for(const o of lista){ const k = grupoOc(o); (g[k] ||= []).push(o); }
+  const ks = Object.keys(g).sort((a, b) => (a === "Outros") - (b === "Outros") || g[b].length - g[a].length);
+  if(ks.length === 1 && ks[0] === "Outros") return `<div class="list">${lista.map(o => otItem(o)).join("")}</div>`;
+  return ks.map(k => `<div class="tipoh"><i class="ico-${ICO_TIPO[k] || "wrench"}"></i>${esc(k)}<span class="badge">${g[k].length}</span></div><div class="list">${g[k].map(o => otItem(o)).join("")}</div>`).join("");
+}
 function viewInicio(){
   const t = today();
   if(!IS_ADMIN){
@@ -619,8 +627,8 @@ function viewInicio(){
       ${statCard(mes, "Concluídas este mês", "otFilter='concluida';go('ordens')")}
     </div>
     <h3>Para hoje e em atraso</h3>
-    <div class="list">${hoje.length ? hoje.map(o=>otItem(o)).join("") : emptyBox("Não tem ordens para hoje.")}</div>
-    ${prox.length?`<h3>Próximas</h3><div class="list">${prox.slice(0,10).map(o=>otItem(o)).join("")}</div>`:""}
+    ${hoje.length ? porTipo(hoje) : `<div class="list">${emptyBox("Não tem ordens para hoje.")}</div>`}
+    ${prox.length?`<h3>Próximas</h3>${porTipo(prox.slice(0,20))}`:""}
     <div class="actions" style="margin-top:18px"><button class="btn dark" onclick="openTrabalho()">+ Novo trabalho</button></div>
     <p style="font-size:13px;color:var(--muted);margin-top:6px">Fez um trabalho num prédio? Registe-o aqui com o material, as horas e as fotos.</p>`;
   }
@@ -1749,7 +1757,7 @@ let notesTimer = null;
 /* ---------- sugestões automáticas (sem IA, por palavras) ---------- */
 const GRUPOS_OC = [
   { g: "Infiltrações e águas", re: /infiltr|humid|bolor|água|agua|chuva|caleir|ralo|entup|esgoto|saneamento|tubo de queda|verte|goteira/i, svc: 3, mat: /silicone|veda|desentup/i },
-  { g: "Campainhas e porta", re: /campainh|intercom|video ?porteiro|videop|botoneir|trinco|fechadura|canh[aã]o|n[aã]o abre|porta (de )?entrada|mola/i, svc: 1, mat: /campainh|botoneir|fechadur|canh|trinco/i },
+  { g: "Videoporteiros, campainhas e portas", re: /campainh|intercom|video ?porteiro|videop|botoneir|trinco|fechadura|canh[aã]o|n[aã]o abre|porta (de )?entrada|mola/i, svc: 1, mat: /campainh|botoneir|fechadur|canh|trinco/i },
   { g: "Portões e garagem", re: /port[aã]o|comando|garagem|motor/i, svc: 2, mat: /comando|lubrific|massa/i },
   { g: "Iluminação", re: /l[aâ]mpad|luz|luzes|ilumin|sensor|temporizador|foco|apag/i, svc: 0, mat: /l[aâ]mpad|foco|led|sensor/i },
   { g: "Eletricidade", re: /quadro el|disjunt|diferencial|tomada|curto|eletric/i, svc: 4, mat: /tomada|disjunt/i },
