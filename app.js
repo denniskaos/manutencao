@@ -1489,6 +1489,10 @@ function editCondo(id){
     <div class="grid2"><label class="f"><span>Administração</span><input id="c_admin" value="${esc(c.admin)}" placeholder="Empresa ou administrador"></label>
     <label class="f"><span>Contacto</span><input id="c_contacto" value="${esc(c.contacto)}" placeholder="Telefone / e-mail"></label></div>
     <label class="f"><span>Nº de frações</span><input id="c_fracoes" type="number" min="0" value="${esc(c.fracoes)}" style="max-width:140px"></label>
+    <div class="f"><span>Coordenadas (GPS) do prédio</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><input id="c_geo" value="${c.lat != null && c.lon != null ? c.lat + ", " + c.lon : ""}" placeholder="Ex.: 41.24123, -8.52901 — ou cole o link do Google Maps" style="flex:1 1 220px;min-width:0" oninput="geoInfo()">
+      <button type="button" class="btn sm" onclick="geoAqui()"><i class=ico-pin></i>Usar a minha localização</button></div>
+      <div class="muted" id="c_geoinfo" style="font-size:12.5px;margin-top:4px">${c.lat != null ? (c.geoFonte === "local" ? "Confirmada no local." : "Aproximada (pela morada).") : "Serve para os técnicos escolherem o prédio pela localização (botão «Estou neste prédio»)."}</div></div>
     <label class="f"><span>Acessos e notas (visível para os técnicos)</span><textarea id="c_notas" placeholder="Onde estão as chaves, horários, contacto do porteiro, localização dos contadores…">${esc(c.notas)}</textarea></label>
     <div class="actions">${id?`<button class="btn danger" onclick="armDelete(this,()=>{delCondo('${id}')})">Eliminar</button>`:""}<span class="sp"></span><button class="btn" onclick="${id?`openCondo('${id}')`:"closeSheet()"}">Cancelar</button><button class="btn pri" onclick="saveCondo('${id||""}')">Guardar</button></div>`);
 }
@@ -1496,7 +1500,39 @@ function saveCondo(id){
   const nome = val("c_nome"); if(!nome){ toast("Indique o nome do condomínio."); return; }
   const prev = id ? S.condos[id] : null;
   const c = {...(prev||{}), id: id || ("c" + newId()), codigo: val("c_cod").toUpperCase(), nif: val("c_nif"), nome, morada: val("c_morada"), admin: val("c_admin"), contacto: val("c_contacto"), fracoes: val("c_fracoes"), notas: val("c_notas")};
+  const gtxt = val("c_geo"), g = lerCoords(gtxt);
+  if(gtxt && !g){ toast("Não percebi as coordenadas. Escreva por exemplo: 41.24123, -8.52901"); return; }
+  if(!gtxt){ c.lat = null; c.lon = null; c.geoFonte = ""; }
+  else if(!prev || prev.lat !== g.lat || prev.lon !== g.lon){ c.lat = g.lat; c.lon = g.lon; c.geoFonte = "local"; }
   put("condos", c); toast("Condomínio guardado."); openCondo(c.id);
+}
+// "41.24, -8.52", "41,24123 -8,52901", ou um link do Google Maps (…@41.24,-8.52,17z / ?q=41.24,-8.52)
+function lerCoords(t){
+  t = (t || "").trim(); if(!t) return null;
+  let m = t.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/) || t.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i) || t.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if(!m) m = t.replace(/(\d),(\d)/g, "$1.$2").match(/(-?\d{1,2}\.\d+)[\s,;]+(-?\d{1,3}\.\d+)/);
+  if(!m) return null;
+  const la = +m[1], lo = +m[2];
+  if(!(la > 36 && la < 43 && lo > -10 && lo < -6)) return null; // Portugal continental
+  return { lat: +la.toFixed(5), lon: +lo.toFixed(5) };
+}
+function geoInfo(){ const i = document.getElementById("c_geoinfo"), v = val("c_geo"); if(!i) return; const g = lerCoords(v); i.textContent = !v ? "Sem coordenadas." : g ? `Lido: ${g.lat}, ${g.lon}` : "Não percebi — escreva latitude, longitude (ex.: 41.24123, -8.52901)."; }
+function geoAqui(){
+  const i = document.getElementById("c_geoinfo"); if(i) i.textContent = "A ver onde está…";
+  if(!navigator.geolocation){ if(i) i.textContent = "Este aparelho não dá a localização."; return; }
+  navigator.geolocation.getCurrentPosition(p => { const e = document.getElementById("c_geo"); if(e) e.value = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5); const i2 = document.getElementById("c_geoinfo"); if(i2) i2.textContent = `Localização atual (precisão ~${Math.round(p.coords.accuracy)} m). Carregue em Guardar.`; },
+    () => { const i2 = document.getElementById("c_geoinfo"); if(i2) i2.textContent = "Não foi possível saber a localização."; }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+// técnico no prédio: guarda a localização (só se o prédio ainda não a tiver confirmada)
+function guardarAqui(cid){
+  if(!navigator.geolocation){ toast("Este aparelho não dá a localização."); return; }
+  toast("A ver onde está…");
+  navigator.geolocation.getCurrentPosition(async p => {
+    if(p.coords.accuracy > 80){ toast(`A localização está pouco precisa (~${Math.round(p.coords.accuracy)} m). Tente na rua, junto à entrada.`); return; }
+    const { error } = await sb.rpc("guardar_posicao_condo", { cid, la: p.coords.latitude, lo: p.coords.longitude });
+    if(error){ toast("Não foi possível guardar."); return; }
+    S.condos[cid] = { ...S.condos[cid], lat: +p.coords.latitude.toFixed(5), lon: +p.coords.longitude.toFixed(5), geoFonte: "local" }; toast("Localização do prédio guardada."); if(sheetRefresh) sheetRefresh();
+  }, () => toast("Não foi possível saber a localização."), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 function delCondo(id){
   const busy = Object.values(S.ots).some(o => condoOf(o) === id) || Object.values(S.plans).some(p => condoOf(p) === id) || Object.values(S.equip).some(e => e.condoId === id);
@@ -1527,10 +1563,11 @@ function openCondo(id, startSub){
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="editCdm(null,'${id}')">+ Condómino</button></div>`;
     }
     if(sub === "equip") content = `<div class="list">${eqs.length ? eqs.map(e => `<div class="item" onclick="openEquip('${e.id}')"><div class="bar"></div><div class="main"><div class="t">${esc(e.nome)}</div><div class="s">${esc([e.tipo, e.local].filter(Boolean).join(" · "))}</div></div></div>`).join("") : emptyBox("Sem equipamentos registados.")}</div>${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editEquip(null,'${id}')">+ Equipamento</button></div>`:""}`;
-    const maps = c.morada ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
+    const maps = (c.lat != null || c.morada) ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat != null ? c.lat + "," + c.lon : c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
+    const geoLinha = c.geoFonte === "local" ? `<div class="muted" style="font-size:12.5px;margin-top:4px"><i class=ico-pin></i>Localização guardada${IS_ADMIN ? " · para corrigir, use Editar" : ""}</div>` : `<div style="margin-top:6px"><button class="btn sm" onclick="guardarAqui('${id}')"><i class=ico-pin></i>Estou aqui — guardar a localização do prédio</button></div>`;
     return `<div class="panel"><dl class="kv">
       ${c.codigo?`<dt>Código</dt><dd class="mono">${esc(c.codigo)}</dd>`:""}
-      <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}</dd>
+      <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}${geoLinha}</dd>
       <dt>NIF</dt><dd class="mono">${esc(c.nif||"—")}</dd>
       ${c.admin?`<dt>Administração</dt><dd>${esc(c.admin)}</dd>`:""}
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
@@ -2776,7 +2813,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
