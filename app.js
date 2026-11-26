@@ -641,6 +641,12 @@ function viewInicio(){
   ${(() => { const desde = addDays(t, -7); const tr = Object.values(S.ots).filter(o => isTrab(o) && o.estado === "concluida" && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
     if(!tr.length) return ""; window.__grp = window.__grp || {};
     return `<h3><i class=ico-wrench></i>Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button></div>`); })()}
+  ${(() => { const desde = addDays(t, -7); const fe = Object.values(S.ots).filter(o => o.estado === "concluida" && !isTrab(o) && !isEntrega(o) && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
+    if(!fe.length) return ""; const g = {}; for(const o of fe){ const k = isExt(o) ? "Elevadores / empresa externa" : o.tecnico ? nm(o.tecnico) : "Sem técnico"; (g[k] ||= []).push(o); }
+    return `<h3><i class=ico-check></i>Ocorrências fechadas <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => {
+      const hoje = os.filter(o => o.concluida === t).length;
+      return grpBlock("fe:" + k, esc(k), [`${os.length} fechada${os.length === 1 ? "" : "s"}`, hoje ? `${hoje} hoje` : ""].filter(Boolean).join(" · "), os);
+    }).join(""); })()}
   ${porAtribuir.length ? (() => { const g = {}; for(const o of porAtribuir){ const k = isExt(o) ? "Elevadores / empresa externa" : (gecResp(o) || "Sem indicação"); (g[k] ||= []).push(o); }
     window.__grp = {};
     return `<h3>Por atribuir <span style="font-weight:400;text-transform:none;letter-spacing:0">— por responsável indicado no Gecond</span></h3>` + (Object.keys(S.zonas || {}).length ? `<div class="actions" style="margin:-4px 0 8px"><span class="sp"></span><button class="btn sm" onclick="atribuirPorZona()"><i class=ico-worker></i>Atribuir ao responsável de cada zona</button></div>` : "") + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => { const key = "pa:" + k; window.__grp[key] = os.map(o => o.id);
