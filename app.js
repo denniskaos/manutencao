@@ -2707,7 +2707,8 @@ function openTrabalho(cid){
   openSheet("Novo trabalho", `
     ${cid ? "" : aquiBox()}
     ${condoPicker(cid || "")}
-    <label class="f"><span>O que foi feito${smMe ? "" : " *"}</span><input id="tw_tit" placeholder="${smMe ? "Opcional — ex.: material aplicado no hall" : "Ex.: Manutenção geral, troca de lâmpadas no 3º"}"></label>
+    ${smMe ? `<label class="f"><span>O que foi feito</span><input id="tw_tit" placeholder="Opcional — ex.: material aplicado no hall"></label>`
+      : `<label class="f"><span>O que foi feito *</span><textarea id="tw_notas" rows="4" placeholder="Descreva o serviço: o que estava avariado, o que fez, o que ficou por fazer…"></textarea></label>${servicosPicker("tw_notas")}`}
     <label class="f"><span>Zona / fração</span><input id="tw_zona" placeholder="Ex.: escadas, garagem -1, 2º esq."></label>
     <div class="panel"><b>Material usado</b><div id="tw_lines" class="parts" style="margin-top:6px"></div>
       ${matList().length ? matPicker("tw_sel", "document.getElementById('tw_nome').style.display=this.value==='__outro'?'':'none'") : ""}
@@ -2719,8 +2720,6 @@ ${smMe ? "" : `    <label class="panel" style="display:flex;gap:10px;align-items
         <span style="display:flex;gap:6px;align-items:center;margin-left:auto">Deslocações <input id="tw_d" type="number" min="0" value="1" style="width:56px;border:1px solid var(--line);border-radius:10px;padding:8px"></span></div></div>
       ${temExtra ? `<div class="panel"><b>Manutenção extra</b><div class="seg" id="tw_extra" style="margin-top:6px">${[["","Nenhuma"],["A","Manutenção A"],["E","Manutenção E"]].map(([k,l]) => `<button type="button" data-k="${k}" class="${k===""?"on":""}" onclick="[...this.parentNode.children].forEach(b=>b.classList.toggle('on', b===this))">${l}</button>`).join("")}</div></div>` : ""}
     </div>
-    <label class="f"><span>Notas</span><textarea id="tw_notas" placeholder="Detalhes do que foi feito, o que fica por fazer…"></textarea></label>
-    ${servicosPicker("tw_notas")}
     <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer"><i class=ico-camera></i>Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
 `}
     <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)"><i class=ico-save></i>Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)"><i class=ico-check></i>Concluir trabalho</button></div>`);
@@ -2735,9 +2734,17 @@ function addTwLine(){
   if($("#tw_sel")) $("#tw_sel").value = ""; if($("#tw_nome") && matList().length) $("#tw_nome").style.display = "none"; $("#tw_qtd").value = ""; drawTwLines(); mpkSync();
 }
 function twDiasMud(){ const n = lerDias("tw_dias").filter(x => x.m > 0).length; const d = $("#tw_d"); if(d && n > 1 && (parseInt(d.value) || 0) < n) d.value = n; }
+// título curto a partir da descrição: primeira frase, até ~60 letras (a descrição completa vai para "Trabalho realizado")
+function tituloDe(t){
+  t = (t || "").replace(/^[•\-\s]+/, "").trim(); if(!t) return "";
+  let f = t.split(/\n|(?<=[.!?])\s/)[0].replace(/^[•\-\s]+/, "").trim().replace(/[.;:,]+$/, "");
+  if(f.length > 60){ f = f.slice(0, 60); const k = f.lastIndexOf(" "); if(k > 30) f = f.slice(0, k); f += "…"; }
+  return f.charAt(0).toUpperCase() + f.slice(1);
+}
 async function saveTrabalho(concluir){
   const smMe = !IS_ADMIN && !!(S.equipa[ME] || {}).soRegistaMaterial;
-  const cid = val("f_condo"), tit = val("tw_tit") || (smMe ? "Material aplicado" : "");
+  const cid = val("f_condo"), desc = val("tw_notas");
+  const tit = smMe ? (val("tw_tit") || "Material aplicado") : tituloDe(desc);
   if(!cid || !tit){ toast("Escolha o prédio e escreva o que foi feito."); return; }
   ensinarPosicao(cid);
   if(val("tw_qtd") || (val("tw_sel") && val("tw_sel") !== "__outro") || val("tw_nome")) addTwLine();
