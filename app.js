@@ -36,7 +36,7 @@ const sb = configured ? createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { 
 // Tabelas e colunas (a aplicação usa nomes camelCase; a base de dados snake_case)
 const TABLES = { condos: "condominios", equip: "equipamentos", plans: "planos", ots: "ordens", cdm: "condominos" };
 const COLS = {
-  condominios: ["id","codigo","nome","morada","nif","fracoes","admin","contacto","notas"],
+  condominios: ["id","codigo","nome","morada","nif","fracoes","admin","contacto","notas","lat","lon","geoFonte"],
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
@@ -2590,11 +2590,52 @@ async function saveMov(tipo){
 }
 /* ---------- novo trabalho feito no local (formulário único) ---------- */
 let twLines = [], twFotos = [];
+/* ---------- "Estou neste prédio": escolhe o prédio pela localização do telemóvel ---------- */
+// A posição só serve para escolher o prédio; não fica guardada nada sobre a pessoa.
+// Se o prédio ainda não tinha a posição confirmada no local, o telemóvel ensina-a (fica no prédio, não na pessoa).
+let POS_AQUI = null;
+const distM = (a, b, c, d) => { const k = Math.PI / 180, x = (d - b) * k * Math.cos((a + c) / 2 * k), y = (c - a) * k; return Math.sqrt(x * x + y * y) * 6371000; };
+const LIM_GEO = { local: 200, morada: 300, rua: 500 };
+function aquiBox(){ return `<div id="aquiBox" class="aqui"><button type="button" class="btn sm" onclick="detetarPredio()"><i class=ico-pin></i>Estou neste prédio</button><span class="muted" id="aquiTxt">Escolhe o prédio pela localização do telemóvel.</span></div>`; }
+function detetarPredio(auto){
+  const t = document.getElementById("aquiTxt"); if(!t) return;
+  if(!navigator.geolocation){ t.textContent = "Este aparelho não dá a localização."; return; }
+  t.textContent = "A ver onde está…";
+  navigator.geolocation.getCurrentPosition(p => {
+    const t2 = document.getElementById("aquiTxt"); if(!t2) return;
+    const la = p.coords.latitude, lo = p.coords.longitude, ac = p.coords.accuracy || 999;
+    POS_AQUI = { la, lo, ac };
+    const perto = Object.values(S.condos).filter(c => c.lat != null && c.lon != null).map(c => ({ c, d: distM(la, lo, c.lat, c.lon) })).sort((a, b) => a.d - b.d);
+    if(!perto.length){ t2.textContent = "Os prédios ainda não têm localização. Procure pelo nome."; return; }
+    const m = x => x.d < 1000 ? Math.round(x.d / 10) * 10 + " m" : (x.d / 1000).toFixed(1).replace(".", ",") + " km";
+    const p0 = perto[0], lim = (LIM_GEO[p0.c.geoFonte] || 0) + Math.min(ac, 150);
+    const segundo = perto[1] && perto[1].d - p0.d < 40 && perto[1].d < lim;
+    if(p0.d <= lim && !segundo){
+      escolherCondo(p0.c.id);
+      t2.innerHTML = `<b>${esc(p0.c.codigo || "")} ${esc(p0.c.nome)}</b> · a ${m(p0)}. Se não for este, procure abaixo.`;
+      return;
+    }
+    const opc = perto.slice(0, 4).filter(x => x.d < 3000);
+    if(!opc.length){ t2.textContent = "Não há nenhum prédio perto daqui. Procure pelo nome."; return; }
+    t2.innerHTML = `Mais perto daqui:` + opc.map(x => `<button type="button" class="schip" onclick="escolherCondo('${x.c.id}');document.getElementById('aquiTxt').innerHTML='<b>'+this.dataset.n+'</b>'" data-n="${esc((x.c.codigo || "") + " " + x.c.nome)}">${esc(x.c.codigo || "")} ${esc(x.c.nome)} <span class="muted">· ${m(x)}</span></button>`).join("");
+  }, e => { const t2 = document.getElementById("aquiTxt"); if(t2) t2.textContent = e && e.code === 1 ? "A localização está bloqueada para a app. Ative-a nas definições do telemóvel, ou procure pelo nome." : "Não foi possível saber a localização. Procure pelo nome."; },
+  { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+function autoDetetar(){
+  POS_AQUI = null;
+  try{ if(navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: "geolocation" }).then(r => { if(r.state === "granted") detetarPredio(true); }).catch(() => {}); }catch(_){}
+}
+async function ensinarPosicao(cid){
+  const c = S.condos[cid]; if(!POS_AQUI || !c || c.geoFonte === "local" || POS_AQUI.ac > 60) return;
+  if(c.lat != null && distM(POS_AQUI.la, POS_AQUI.lo, c.lat, c.lon) > 2000) return; // longe demais da morada: provavelmente não está no prédio
+  try{ await sb.rpc("guardar_posicao_condo", { cid, la: POS_AQUI.la, lo: POS_AQUI.lo }); S.condos[cid] = { ...c, lat: +POS_AQUI.la.toFixed(5), lon: +POS_AQUI.lo.toFixed(5), geoFonte: "local" }; }catch(_){}
+}
 function openTrabalho(cid){
   twLines = []; twFotos = [];
   const smMe = !IS_ADMIN && !!(S.equipa[ME] || {}).soRegistaMaterial;   // só regista material
   const temExtra = !Object.keys(S.ots).length || Object.values(S.ots).some(o => "extra" in o);
   openSheet("Novo trabalho", `
+    ${cid ? "" : aquiBox()}
     ${condoPicker(cid || "")}
     <label class="f"><span>O que foi feito${smMe ? "" : " *"}</span><input id="tw_tit" placeholder="${smMe ? "Opcional — ex.: material aplicado no hall" : "Ex.: Manutenção geral, troca de lâmpadas no 3º"}"></label>
     <label class="f"><span>Zona / fração</span><input id="tw_zona" placeholder="Ex.: escadas, garagem -1, 2º esq."></label>
@@ -2613,7 +2654,7 @@ ${smMe ? "" : `    <label class="panel" style="display:flex;gap:10px;align-items
     <div class="panel"><b>Fotografias</b> <span id="tw_nf" style="color:var(--muted);font-size:13px"></span><div style="margin-top:6px"><label class="btn sm" style="cursor:pointer"><i class=ico-camera></i>Juntar fotos<input type="file" accept="image/*" multiple style="display:none" onchange="twFotos.push(...this.files);this.value='';document.getElementById('tw_nf').textContent=twFotos.length+' foto(s)'"></label></div></div>
 `}
     <div class="actions" style="flex-wrap:wrap"><button class="btn" onclick="closeSheet()">Cancelar</button><span class="sp"></span><button class="btn" onclick="saveTrabalho(false)"><i class=ico-save></i>Guardar e acabar depois</button><button class="btn pri" onclick="saveTrabalho(true)"><i class=ico-check></i>Concluir trabalho</button></div>`);
-  drawTwLines();
+  drawTwLines(); if(!cid) autoDetetar();
 }
 function drawTwLines(){ const el = $("#tw_lines"); if(!el) return; el.innerHTML = twLines.map((x, i) => `<div class="part"><span class="n">${esc(x.n)} ${fatTag(x)}</span><span class="mono">× ${numTxt(x.q)}</span><button class="btn sm" onclick="twLines.splice(${i},1);drawTwLines()">✕</button></div>`).join(""); }
 function addTwLine(){
@@ -2628,6 +2669,7 @@ async function saveTrabalho(concluir){
   const smMe = !IS_ADMIN && !!(S.equipa[ME] || {}).soRegistaMaterial;
   const cid = val("f_condo"), tit = val("tw_tit") || (smMe ? "Material aplicado" : "");
   if(!cid || !tit){ toast("Escolha o prédio e escreva o que foi feito."); return; }
+  ensinarPosicao(cid);
   if(val("tw_qtd") || (val("tw_sel") && val("tw_sel") !== "__outro") || val("tw_nome")) addTwLine();
   const so = !!($("#tw_so") || {}).checked;
   const twDias = so ? [] : lerDias("tw_dias").filter(x => x.m > 0);
@@ -2734,7 +2776,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
