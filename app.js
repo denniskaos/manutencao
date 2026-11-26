@@ -1507,6 +1507,9 @@ function saveCondo(id){
   put("condos", c); toast("Condomínio guardado."); openCondo(c.id);
 }
 // "41.24, -8.52", "41,24123 -8,52901", ou um link do Google Maps (…@41.24,-8.52,17z / ?q=41.24,-8.52)
+// link para o GPS (Google Maps abre a navegação; no iPhone/Android abre a app de mapas se existir)
+const rotaUrl = c => c && (c.lat != null && c.lon != null ? `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}` : c.morada ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.morada)}` : "");
+const rotaBtn = (c, cls) => rotaUrl(c) ? `<a class="btn ${cls || ""}" href="${rotaUrl(c)}" target="_blank" rel="noopener"><i class=ico-pin></i>Como chegar${c.lat != null ? "" : " (pela morada)"}</a>` : "";
 function lerCoords(t){
   t = (t || "").trim(); if(!t) return null;
   let m = t.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/) || t.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i) || t.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
@@ -1567,13 +1570,13 @@ function openCondo(id, startSub){
     const geoLinha = c.geoFonte === "local" ? `<div class="geol ok"><i class=ico-pin></i>Localização do prédio guardada${IS_ADMIN ? " · para corrigir, use Editar" : ""}</div>` : `<div class="geol"><button class="btn" onclick="guardarAqui('${id}')"><i class=ico-pin></i>Estou aqui — guardar localização</button><span>Carregue quando estiver no prédio.</span></div>`;
     return `<div class="panel"><dl class="kv">
       ${c.codigo?`<dt>Código</dt><dd class="mono">${esc(c.codigo)}</dd>`:""}
-      <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}</dd>
-      ${c.lat != null && c.lon != null ? `<dt>Coordenadas</dt><dd class="mono">${c.lat}, ${c.lon} <a href="https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lon}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:4px;font-family:inherit">ver no mapa ↗</a></dd>` : ""}
+      <dt>Morada</dt><dd>${esc(c.morada||"—")}</dd>
+      ${c.lat != null && c.lon != null ? `<dt>Coordenadas</dt><dd class="mono">${c.lat}, ${c.lon}</dd>` : ""}
       <dt>NIF</dt><dd class="mono">${esc(c.nif||"—")}</dd>
       ${c.admin?`<dt>Administração</dt><dd>${esc(c.admin)}</dd>`:""}
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
       ${c.fracoes?`<dt>Frações</dt><dd>${esc(c.fracoes)}</dd>`:""}
-      ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl>${geoLinha}</div>
+      ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl><div class="geol" style="border-top:0;margin-top:8px;padding-top:0">${rotaBtn(c, "pri")}</div>${geoLinha}</div>
       <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="${IS_ADMIN ? `editOt(null,'${id}')` : `openTrabalho('${id}')`}">+ ${IS_ADMIN?"Nova ordem":"Novo trabalho"}</button></div>
       <div class="seg" style="margin-bottom:10px">
         <button class="${sub==="ordens"?"on":""}" onclick="condoSub('ordens')">Ordens${pend.length?` (${pend.length})`:""}</button>
@@ -2094,7 +2097,7 @@ function openOt(id){
     const sm = smOt(o);   // técnico que só regista material
     const fotos = o.fotos || [];
     if(fotos.length) ensureUrls(fotos).then(ch => { if(ch && sheetRefresh) sheetRefresh(); });
-    const maps = c.morada ? ` <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px">mapa ↗</a>` : "";
+    const maps = rotaUrl(c) ? ` <a href="${rotaUrl(c)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;white-space:nowrap"><i class=ico-pin></i>como chegar ↗</a>` : "";
     return `<div class="seg" style="margin-bottom:12px">${Object.entries(ESTADOS).map(([k,l]) => k==="concluida"
         ? `<button class="${o.estado===k?"on":""}" onclick="${o.estado===k||!mine?"":`setEstado('${id}','concluida',true)`}">${l}</button>`
         : `<button class="${o.estado===k?"on":""}" onclick="setEstado('${id}','${k}')">${l}</button>`).join("")}</div>
