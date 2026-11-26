@@ -1382,12 +1382,23 @@ function openHora(id, tec){
   openSheet(h ? "Corrigir horas" : "Registar horas" + (tec !== ME ? " — " + esc(nm(tec)) : ""), `
     <label class="f"><span>Dia</span><input id="h_dia" type="date" value="${esc(dia)}"></label>
     ${condoPicker(h ? h.condoId || "" : "")}
-    <label class="f"><span>Ou outra tarefa (sem prédio)</span><input id="h_local" value="${esc(h && !h.condoId ? h.local : "")}" placeholder="Ex.: Armazém, compras, escritório…"></label>
+    <label class="f"><span>Ou outra tarefa (sem prédio)</span><input id="h_local" value="${esc(h && !h.condoId ? h.local : "")}" placeholder="Ex.: Reunião de manutenção, armazém…"></label>
+    <div class="hchips">${tarefasRapidas(tec).map(t => `<button type="button" class="schip" onclick="tarefaRapida(this.textContent)">${esc(t)}</button>`).join("")}</div>
     <div class="grid2"><label class="f"><span>Entrada</span><input id="h_ent" type="time" value="${esc(h ? h.entrada : "")}" oninput="hTot()"></label><label class="f"><span>Saída</span><input id="h_sai" type="time" value="${esc(h ? h.saida : "")}" oninput="hTot()"></label></div>
     <div id="h_tot" class="mono" style="font-weight:700;font-size:18px;margin:-4px 0 10px">${h ? "Total: " + hm(h.minutos) : ""}</div>
     <label class="f"><span>Descrição do serviço</span><textarea id="h_desc" rows="2" placeholder="Ex.: Limpeza das escadas e hall">${esc(h ? h.descricao : "")}</textarea></label>
     <div class="actions" style="flex-wrap:wrap">${h ? `<button class="btn danger" onclick="armDelete(this,()=>apagarHora('${h.id}'))">Apagar</button>` : `<button class="btn" onclick="closeSheet()">Cancelar</button>`}<span class="sp"></span>
       ${h ? "" : `<button class="btn" onclick="guardarHora(null,'${tec}',true)">Guardar e registar outra</button>`}<button class="btn pri" onclick="guardarHora(${h ? `'${h.id}'` : "null"},'${tec}',false)">Guardar</button></div>`);
+}
+// tarefas sem prédio que se repetem: a reunião de manutenção (segunda de manhã) e as que já foram usadas
+function tarefasRapidas(tec){
+  const usadas = {}; for(const h of Object.values(S.horas)) if(h.tecnico === tec && !h.condoId && h.local) usadas[h.local] = (usadas[h.local] || 0) + 1;
+  return ["Reunião de manutenção", ...Object.keys(usadas).sort((a, b) => usadas[b] - usadas[a])].filter((x, i, a) => a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).slice(0, 6);
+}
+function tarefaRapida(t){
+  const i = $("#h_local"); if(i) i.value = t;
+  const s = $("#f_condo"); if(s){ s.value = ""; } const q = $("#f_cq"); if(q) q.value = "";
+  toast("Tarefa: " + t);
 }
 function hTot(){ const m = minEntre(val("h_ent"), val("h_sai")); const e = $("#h_tot"); if(e) e.textContent = m ? "Total: " + hm(m) : ""; }
 async function guardarHora(id, tec, outra){
@@ -3036,7 +3047,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
