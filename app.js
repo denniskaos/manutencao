@@ -2440,7 +2440,7 @@ function extReportHtml(o, withPhotos){
   const emp = o.empresa || (e && e.empresa) || "";
   const dias = o.contactada && o.concluida ? diasEntre(o.contactada, o.concluida) : null;
   const sg = o.tecnico && (S.equipa[o.tecnico] || {}).assinatura;
-  return `<div class="pr">
+  return `<div class="pr${withPhotos && (o.fotos || []).length ? "" : " fit1"}">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Ficha de Acompanhamento de Avaria</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${o.estado === "concluida" ? "Resolvida" : esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Resolvida: ${fmtDate(o.concluida)}`:""}${gecondBox()}</div></div>
     <h2>Condomínio</h2>
@@ -2463,7 +2463,7 @@ function reportHtml(o, withPhotos = true){
   const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
   const ck = o.checklist || [], pc = o.pecas || [];
   const tempo = o.tempo ? tempoTxt(o) + (diasTxt(o) ? " — " + diasTxt(o) : "") : "";
-  return `<div class="pr">
+  return `<div class="pr${withPhotos && fotos.length ? "" : " fit1"}">
     <div class="hd"><div class="lg">${prLogo()}<div><h1>Relatório de Intervenção</h1><div>${esc(o.titulo)}</div></div></div>
       <div class="meta">Ordem nº <b>${esc(numOt(o) || "—")}</b><br>Estado: <b>${esc(ESTADOS[o.estado])}</b>${o.concluida?`<br>Concluída: ${fmtDate(o.concluida)}`:""}${gecondBox()}</div></div>
     <h2>Condomínio</h2>
@@ -2511,7 +2511,7 @@ async function printHtml(html){
     const antes = pa.style.cssText; const mm = 96 / 25.4;
     for(const el of fits){
       const deitado = el.classList.contains("deitado"); const maxH = (deitado ? 210 : 297) * mm;
-      pa.style.cssText = `display:block;position:absolute;left:-10000px;top:0;width:${deitado ? 297 : 210}mm;visibility:hidden;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif`; el.style.zoom = ""; el.style.padding = "14mm"; el.style.boxSizing = "border-box"; const h = el.offsetHeight; el.style.padding = ""; el.style.boxSizing = ""; if(h > maxH * 0.97) el.style.zoom = Math.max(0.4, (maxH * 0.95 / h)).toFixed(3); }
+      pa.style.cssText = `display:block;position:absolute;left:-10000px;top:0;width:${deitado ? 297 : 210}mm;visibility:hidden;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif`; el.style.zoom = ""; el.style.padding = "14mm"; el.style.boxSizing = "border-box"; const h = el.offsetHeight; el.style.padding = ""; el.style.boxSizing = ""; const lim = isIOS ? 0.84 : 0.95; /* o iPhone junta margens e cabeçalho próprios */ if(h > maxH * (lim + 0.02)) el.style.zoom = Math.max(0.4, (maxH * lim / h)).toFixed(3); }
     pa.style.cssText = antes;
   }
   try{ window.print(); }catch(_){ toast("Este dispositivo não permite imprimir daqui. Use o computador."); }
