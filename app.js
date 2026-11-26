@@ -1473,7 +1473,7 @@ async function printDeclaracao(tec){
   const linhas = Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt"));
   const emp = S.empresa || {}; const cor = /^#[0-9a-f]{6}$/i.test(emp.cor || "") ? emp.cor : "#404040";
   // igual à declaração em Excel: logo, linha de cor, DECLARAÇÃO ao centro, tabela por semana, resumo com total a receber em destaque, data e assinaturas
-  await printHtml(`<div class="pr dcl" style="--dc:${cor}">
+  await printHtml(`<div class="pr dcl fit1${linhas.length > 22 ? " compacto" : ""}" style="--dc:${cor}">
     <div class="dcl-top"><div class="dcl-logo">${prLogo() || `<b>${esc(emp.nome || "")}</b>`}</div><div class="dcl-loc">${esc(loc)}</div></div>
     <h1 class="dcl-h">DECLARAÇÃO</h1><div class="dcl-s">Prestação de serviços de manutenção</div>
     <p class="dcl-txt">Declara-se, para os devidos efeitos, que ${esc(nm(tec))} recebeu a quantia de <b>${eur(totE)}</b><br>relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
@@ -2465,6 +2465,15 @@ async function printHtml(html){
     Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))),
     new Promise(r => setTimeout(r, 12000)),
   ]);
+  // documentos que têm de caber numa só folha A4 (ex.: declaração): reduz o tamanho até caber
+  const fits = pa.querySelectorAll(".fit1");
+  if(fits.length){
+    // mede com as mesmas medidas da impressão (letra e margens da folha)
+    const antes = pa.style.cssText; pa.style.cssText = 'display:block;position:absolute;left:-10000px;top:0;width:210mm;visibility:hidden;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif';
+    const mm = 96 / 25.4, maxH = 297 * mm;
+    for(const el of fits){ el.style.zoom = ""; el.style.padding = "14mm"; el.style.boxSizing = "border-box"; const h = el.offsetHeight; el.style.padding = ""; el.style.boxSizing = ""; if(h > maxH * 0.97) el.style.zoom = Math.max(0.4, (maxH * 0.95 / h)).toFixed(3); }
+    pa.style.cssText = antes;
+  }
   try{ window.print(); }catch(_){ toast("Este dispositivo não permite imprimir daqui. Use o computador."); }
 }
 /* ---------- guia de entrega de material ---------- */

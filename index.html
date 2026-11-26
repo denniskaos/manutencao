@@ -342,7 +342,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 }
 .pr h1{font-size:16pt;margin:0}
 /* declaração (igual ao Excel) */
-.dcl{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,sans-serif;font-size:10pt;color:#000;position:relative;min-height:265mm}
+.dcl{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,sans-serif;font-size:10pt;color:#000;break-inside:avoid}
 .dcl-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid var(--dc);padding-bottom:6px}
 .dcl-logo img{height:21mm;width:auto}.dcl-logo b{font-size:16pt}.dcl-loc{font-size:9pt;color:#808080}
 .dcl-h{text-align:center;font-size:16pt !important;font-weight:700;color:#404040;margin:16px 0 2px !important;letter-spacing:.5px}
@@ -359,7 +359,9 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .pr table.dcl-r tr.tot td{background:var(--dc);color:#fff;font-weight:700;font-size:11pt;padding:5px 10px}
 .dcl-data{margin-top:30px}
 .dcl-ass{display:flex;justify-content:space-between;gap:24mm;margin-top:20mm}.dcl-ass div{border-top:1px solid #000;text-align:center;padding-top:3px;width:62mm}.dcl-ass div:last-child{width:78mm}.dcl-ass small{display:block;font-size:9pt;color:#808080}
-.dcl-rod{position:absolute;left:0;right:0;bottom:0;text-align:center;font-size:8pt;color:#555}
+.dcl-rod{margin-top:12mm;text-align:center;font-size:8pt;color:#555}
+.dcl.compacto .dcl-logo img{height:15mm}.dcl.compacto .dcl-h{margin:8px 0 0 !important}.dcl.compacto .dcl-s{margin-bottom:8px}.dcl.compacto .dcl-txt{margin-bottom:8px;line-height:1.5}
+.pr.dcl.compacto table.dcl-t td{padding:1px 6px;font-size:8.5pt;line-height:1.2}.dcl.compacto .dcl-data{margin-top:14px}.dcl.compacto .dcl-ass{margin-top:12mm}.dcl.compacto .dcl-rod{margin-top:6mm}
 /* folhas de horas / declaração */
 .prh{-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#1f2a30}
 .prh-cab{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding-bottom:10px;border-bottom:3px solid #1f2a30;margin-bottom:14px}
@@ -413,7 +415,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=136"></script>
-<script type="module" src="app.js?v=136"></script>
+<script src="config.js?v=137"></script>
+<script type="module" src="app.js?v=137"></script>
 </body>
 </html>
