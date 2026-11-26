@@ -1268,11 +1268,13 @@ function openPessoa(id){
       <div class="grid2"><label class="f" style="margin:0"><span>1.ª hora (€)</span><input id="tt_h1" inputmode="decimal" value="${tt ? String(tt.hora1).replace(".", ",") : ""}" placeholder="Ex.: 40"></label>
       <label class="f" style="margin:0"><span>Horas seguintes (€/h)</span><input id="tt_h" inputmode="decimal" value="${tt ? String(tt.hora).replace(".", ",") : ""}" placeholder="Ex.: 20"></label></div>
       <div class="actions" style="margin-top:8px"><span class="sp"></span><button class="btn" onclick="setTarTec('${id}')">Guardar tarifa</button></div></div>`; })() : ""}
-    ${x.folhaHoras && IS_ADMIN ? `<h3>Folha de horas</h3><div class="panel"><div class="actions" style="margin:0"><button class="btn pri" onclick="abrirFolha('${id}')"><i class=ico-clip></i>Ver folha de horas${VE_STOCK() ? " e declaração" : ""}</button></div></div>` : ""}
+    ${x.papel === "tec" && VE_STOCK() ? `<h3>Folha de horas <span style="font-weight:400;text-transform:none;letter-spacing:0">(só para si)</span></h3><div class="panel"><div class="actions" style="margin:0;flex-wrap:wrap">
+      <button class="btn" onclick="setFolhaHoras('${id}', ${!x.folhaHoras})">${x.folhaHoras ? "Desligar folha de horas" : "Ativar folha de horas"}</button>
+      ${x.folhaHoras ? `<button class="btn" onclick="setFolhaVer('${id}', ${!x.folhaVer})">${x.folhaVer ? "O técnico vê a folha · tirar" : "Deixar o técnico ver a folha"}</button><span class="sp"></span><button class="btn pri" onclick="abrirFolha('${id}')"><i class=ico-clip></i>Ver folha de horas e declaração</button>` : ""}</div>
+      ${x.folhaHoras ? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">${x.folhaVer ? "O técnico regista as horas e vê a folha da semana (sem valores)." : "O técnico só regista as horas; a folha, os totais e as impressões ficam só para si."}</div>` : ""}</div>` : ""}
     <h3>Acesso</h3>
     <div class="panel" style="font-size:14px">E-mail de entrada: <b>${esc(x.email||"")}</b>
       <div class="actions" style="margin-top:10px"><button class="btn" onclick="resetPw('${id}')">Repor palavra-passe</button>
-      ${!self && IS_ADMIN && x.papel !== "admin" ? `<button class="btn" onclick="setFolhaHoras('${id}', ${!x.folhaHoras})"><i class=ico-clip></i>${x.folhaHoras ? "Desligar folha de horas" : "Ativar folha de horas"}</button>` : ""}
       ${!self && IS_ADMIN && x.papel !== "admin" ? `<button class="btn" onclick="setSoRegMat('${id}', ${!x.soRegistaMaterial})">${x.soRegistaMaterial ? "Registar tudo (tempo, notas, fotos)" : "Só regista material"}</button>` : ""}
       ${!self && VE_STOCK() ? `<button class="btn" onclick="setOculto('${id}', ${!x.oculto})"><i class=ico-lock></i>${x.oculto ? "Mostrar a todos" : "Conta de teste (só eu vejo)"}</button>` : ""}
       ${self?"":`<button class="btn ${x.ativo?"danger":""}" data-label="${x.ativo?"Desativar conta":"Reativar conta"}" onclick="${x.ativo ? `openDesativar('${id}')` : `armDelete(this,()=>setAtivo('${id}',true))`}">${x.ativo?"Desativar conta":"Reativar conta"}</button>`}</div></div>`);
@@ -1360,6 +1362,11 @@ function folhaBloco(){
   if(!fhIni) fhIni = segDe(today());
   const fim = addDays(fhIni, 6); const l = horasDe(ME, fhIni, fim); const tot = l.reduce((a, h) => a + (h.minutos || 0), 0);
   const dias = {}; for(const h of l) (dias[h.dia] ||= []).push(h);
+  if(!(S.equipa[ME] || {}).folhaVer){
+    // só regista: vê o que meteu esta semana (para corrigir), sem totais nem impressões
+    return `<div class="actions" style="margin:4px 0 12px"><button class="btn pri" style="flex:1;justify-content:center" onclick="openHora()"><i class=ico-clip></i>Registar horas</button></div>
+      ${l.length ? `<h3>Registado esta semana</h3>` + l.slice().reverse().map(h => `<div class="fh-r" onclick="openHora('${h.id}')"><span class="p">${esc(localH(h))}</span><span class="h" style="text-align:right">${diaCurto(h.dia)}</span><span class="h">${esc(h.entrada)} – ${esc(h.saida)}</span><span></span></div>`).join("") : ""}`;
+  }
   return `<div class="actions" style="margin:4px 0 12px"><button class="btn pri" style="flex:1;justify-content:center" onclick="openHora()"><i class=ico-clip></i>Registar horas</button></div>
     <h3>Folha de horas</h3>
     <div class="fh-sem"><button class="btn sm" onclick="fhMover(-7)">‹</button><b>Semana ${fmtDate(fhIni).slice(0, 5)} a ${fmtDate(fim).slice(0, 5)}</b><button class="btn sm" onclick="fhMover(7)">›</button></div>
@@ -1397,6 +1404,7 @@ async function guardarHora(id, tec, outra){
 async function apagarHora(id){ const h = S.horas[id]; const { error } = await sb.from("horas").delete().eq("id", id); if(error){ writeErr(error); return; } delete S.horas[id]; toast("Registo apagado."); if(fhTec) openFolha(fhTec); else { closeSheet(); render(); } }
 // escritório: ver a semana de um técnico, imprimir a folha e (só o dono) a declaração
 async function openFolha(tec, ini){
+  if(!VE_STOCK() && !(tec === ME && (S.equipa[ME] || {}).folhaVer)) return;
   fhTec = tec; if(ini) fhIni = ini; if(!fhIni) fhIni = segDe(today());
   const fim = addDays(fhIni, 6);
   if(!horasDe(tec, fhIni, fim).length) await carregarHoras(tec, fhIni, fim);
@@ -1413,15 +1421,23 @@ function printSemana(tec){ const i = fhIni || segDe(today()); return printFolha(
 function printPeriodo(tec){ return printFolha(tec, val("fp_de"), val("fp_ate")); }
 function fecharFolha(){ fhTec = ""; closeSheet(); }
 function abrirFolha(tec){ fhIni = ""; openFolha(tec); }
+// cabeçalho comum das folhas de horas / declaração
+const prhCab = (titulo, sub, dir) => `<div class="prh-cab"><div class="prh-logo">${prLogo() || `<b>${esc((S.empresa || {}).nome || "")}</b>`}</div><div class="prh-tit"><h1>${titulo}</h1>${sub ? `<div class="prh-sub">${sub}</div>` : ""}${dir ? `<div class="prh-per">${dir}</div>` : ""}</div></div>`;
 async function printFolha(tec, ini, fim){
   if(!ini || !fim || fim < ini){ toast("Escolha as datas."); return; }
   await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim); const tot = l.reduce((a, h) => a + h.minutos, 0);
-  const porDia = {}; for(const h of l) porDia[h.dia] = (porDia[h.dia] || 0) + h.minutos;
-  await printHtml(`<div class="pr"><div class="hd"><div class="lg">${prLogo()}<div><h1>Folha de horas</h1><div>${esc(nm(tec))}</div></div></div><div class="meta">${ini === segDe(ini) && fim === addDays(ini, 6) ? "Semana de " : "De "}${fmtDate(ini)} a ${fmtDate(fim)}</div></div>
-    <table><tr><th style="width:72px;white-space:nowrap">Dia</th><th>Prédio / tarefa</th><th style="width:50px">Entrada</th><th style="width:50px">Saída</th><th style="width:48px">Total</th><th>Descrição do serviço</th></tr>
-    ${l.map(h => `<tr><td style="white-space:nowrap">${diaCurto(h.dia)}</td><td>${esc(localH(h))}</td><td>${esc(h.entrada)}</td><td>${esc(h.saida)}</td><td><b>${hm(h.minutos)}</b></td><td>${esc(h.descricao)}</td></tr>`).join("") || `<tr><td colspan="6">Sem registos neste período.</td></tr>`}
-    <tr><th colspan="4" style="text-align:right">Total</th><th>${hm(tot)}</th><th></th></tr></table>
-    ${Object.keys(porDia).length ? `<p style="font-size:9pt;color:#555;margin-top:8px">${Object.keys(porDia).sort().map(d => diaCurto(d) + ": " + hm(porDia[d])).join(" · ")}</p>` : ""}</div>`);
+  const dias = {}; for(const h of l) (dias[h.dia] ||= []).push(h);
+  const semana = ini === segDe(ini) && fim === addDays(ini, 6);
+  const corpo = Object.keys(dias).sort().map(d => {
+    const ls = dias[d]; const td = ls.reduce((a, h) => a + h.minutos, 0);
+    return ls.map((h, k) => `<tr>${k === 0 ? `<td class="dia" rowspan="${ls.length}"><b>${DSEM[new Date(d + "T12:00:00").getDay()]}</b><br>${fmtDate(d).slice(0, 5)}</td>` : ""}<td>${esc(localH(h))}</td><td class="c">${esc(h.entrada)}</td><td class="c">${esc(h.saida)}</td><td class="c b">${hm(h.minutos)}</td><td class="desc">${esc(h.descricao)}</td></tr>`).join("")
+      + `<tr class="sub"><td colspan="4" class="r">Total do dia</td><td class="c b">${hm(td)}</td><td></td></tr>`;
+  }).join("");
+  await printHtml(`<div class="pr prh">${prhCab("Folha de horas", esc(nm(tec)), (semana ? "Semana de " : "Período de ") + fmtDate(ini) + " a " + fmtDate(fim))}
+    <div class="prh-res"><div><b>${hm(tot)}</b><span>Total de horas</span></div><div><b>${Object.keys(dias).length}</b><span>Dias com registo</span></div><div><b>${new Set(l.map(localH)).size}</b><span>Prédios / tarefas</span></div><div><b>${l.length}</b><span>Registos</span></div></div>
+    <table class="prh-t"><thead><tr><th style="width:15mm">Dia</th><th>Prédio / tarefa</th><th class="c" style="width:15mm">Entrada</th><th class="c" style="width:15mm">Saída</th><th class="c" style="width:15mm">Total</th><th>Descrição do serviço</th></tr></thead>
+    <tbody>${corpo || `<tr><td colspan="6" class="c">Sem registos neste período.</td></tr>`}</tbody>
+    <tfoot><tr><td colspan="4" class="r">Total ${semana ? "da semana" : "do período"}</td><td class="c">${hm(tot)}</td><td></td></tr></tfoot></table></div>`);
 }
 // último período já fechado: ex. dia 26 → de 26 do mês anterior até 25 deste mês (ou do anterior, se ainda não chegou ao 25)
 function periodoPago(di){
@@ -1454,18 +1470,23 @@ async function printDeclaracao(tec){
   const totH = l.reduce((a, h) => a + h.minutos, 0) / 60; const totE = Math.round(totH * v * 100) / 100;
   const sl = s0 => { const a = s0 < ini ? ini : s0; let b = addDays(s0, 4) < fim ? addDays(s0, 4) : fim; if(b < a) b = addDays(s0, 6) < fim ? addDays(s0, 6) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
   const ext = d => { const x = new Date(d + "T12:00:00"); return x.getDate() + " de " + x.toLocaleDateString("pt-PT", { month: "long" }) + (d.slice(0, 4) !== fim.slice(0, 4) || d === fim ? " de " + d.slice(0, 4) : ""); };
-  await printHtml(`<div class="pr"><div class="hd"><div class="lg">${prLogo()}</div><div class="meta">${esc(loc)}</div></div>
-    <h1 style="text-align:center;margin-top:10px">DECLARAÇÃO</h1><p style="text-align:center;margin:2px 0 14px;color:#555;font-style:italic">Prestação de serviços de manutenção</p>
-    <p>Eu, ${esc(nm(tec))}, declaro que recebi a quantia de <b>${eur(totE)}</b> relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
-    <table><tr><th>Local / Tarefa</th>${sems.map(s0 => `<th style="text-align:center">${sl(s0)}</th>`).join("")}<th style="text-align:center">Total (h)</th></tr>
-    ${Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt")).map(k => `<tr><td>${esc(k)}</td>${sems.map(s0 => `<td style="text-align:center">${n1(lin[k][s0])}</td>`).join("")}<td style="text-align:center"><b>${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</b></td></tr>`).join("")}
-    <tr><th>Total por semana</th>${sems.map(s0 => `<th style="text-align:center">${n1(totS(s0))}</th>`).join("")}<th style="text-align:center">${totH.toFixed(1)}</th></tr></table>
-    <table style="width:auto;margin:14px 0 0 auto"><tr><td>Total de horas</td><td style="text-align:right">${totH.toFixed(1)} h</td></tr><tr><td>Valor por hora</td><td style="text-align:right">${eur(v)}</td></tr><tr><th>Total a receber</th><th style="text-align:right">${eur(totE)}</th></tr></table>
-    <p style="margin-top:26px">${esc(loc)}${loc ? ", " : ""}____ de ________________ de ${fim.slice(0, 4)}</p>
-    <div style="display:flex;justify-content:space-between;margin-top:46px"><div style="border-top:1px solid #000;width:60mm;text-align:center;padding-top:3px">A Administração</div><div style="border-top:1px solid #000;width:70mm;text-align:center;padding-top:3px">O Colaborador<br><span style="font-size:9pt;color:#555">(${esc(nm(tec))})</span></div></div></div>`);
+  const linhas = Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt"));
+  await printHtml(`<div class="pr prh">${prhCab("Declaração", "Prestação de serviços de manutenção", "")}
+    <p class="prh-txt">Eu, <b>${esc(nm(tec))}</b>, declaro que recebi a quantia de <b>${eur(totE)}</b> relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
+    <table class="prh-t"><thead><tr><th>Local / tarefa</th>${sems.map(s0 => `<th class="c">${sl(s0)}</th>`).join("")}<th class="c" style="width:16mm">Total (h)</th></tr></thead>
+    <tbody>${linhas.map(k => `<tr><td>${esc(k)}</td>${sems.map(s0 => `<td class="c">${n1(lin[k][s0])}</td>`).join("")}<td class="c b">${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</td></tr>`).join("") || `<tr><td colspan="${sems.length + 2}" class="c">Sem horas neste período.</td></tr>`}</tbody>
+    <tfoot><tr><td>Total por semana</td>${sems.map(s0 => `<td class="c">${n1(totS(s0))}</td>`).join("")}<td class="c">${totH.toFixed(1)}</td></tr></tfoot></table>
+    <div class="prh-conta"><div><span>Total de horas</span><b>${totH.toFixed(1).replace(".", ",")} h</b></div><div><span>Valor por hora</span><b>${eur(v)}</b></div><div class="tot"><span>Total a receber</span><b>${eur(totE)}</b></div></div>
+    <p class="prh-data">${esc(loc)}${loc ? ", " : ""}____ de ____________________ de ${fim.slice(0, 4)}</p>
+    <div class="prh-ass"><div>A Administração</div><div>O Colaborador<small>${esc(nm(tec))}</small></div></div></div>`);
+}
+async function setFolhaVer(id, v){
+  if(!VE_STOCK()) return;
+  const { error } = await sb.from("perfis").update({ folha_ver: v }).eq("id", id); if(error){ writeErr(error); return; }
+  S.equipa[id] = { ...S.equipa[id], folhaVer: v }; openPessoa(id); toast(v ? nm(id) + " passa a ver a folha de horas." : "Só o senhor vê a folha de horas de " + nm(id) + ".");
 }
 async function setFolhaHoras(id, v){
-  if(!IS_ADMIN) return;
+  if(!VE_STOCK()) return;
   const { error } = await sb.from("perfis").update({ folha_horas: v }).eq("id", id); if(error){ writeErr(error); return; }
   S.equipa[id] = { ...S.equipa[id], folhaHoras: v }; closeSheet(); render(); toast(v ? nm(id) + " passa a ter folha de horas." : "Folha de horas desligada para " + nm(id) + ".");
 }
@@ -2993,7 +3014,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { go, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,

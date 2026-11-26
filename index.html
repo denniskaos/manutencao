@@ -341,6 +341,24 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
   #printArea{display:block;color:#000;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif}
 }
 .pr h1{font-size:16pt;margin:0}
+/* folhas de horas / declaração */
+.prh{-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#1f2a30}
+.prh-cab{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding-bottom:10px;border-bottom:3px solid #1f2a30;margin-bottom:14px}
+.prh-logo img{height:17mm;width:auto}.prh-logo b{font-size:16pt}
+.prh-tit{text-align:right}.prh-tit h1{font-size:20pt;letter-spacing:.5px;text-transform:uppercase;margin:0;line-height:1.1}.prh-sub{font-size:11pt;color:#555;margin-top:2px}.prh-per{display:inline-block;margin-top:6px;background:#f1ece4;border-radius:4px;padding:3px 8px;font-size:9.5pt;font-weight:600}
+.prh-res{display:flex;gap:8px;margin:0 0 12px}.prh-res div{flex:1;border:1px solid #d8d2c8;border-radius:6px;padding:6px 10px}.prh-res b{display:block;font-size:15pt}.prh-res span{font-size:8.5pt;color:#666;text-transform:uppercase;letter-spacing:.4px}
+.pr table.prh-t{border-collapse:collapse;width:100%;font-size:9.5pt}
+.pr table.prh-t th{background:#1f2a30;color:#fff;border:0;padding:6px 7px;font-size:8.5pt;text-transform:uppercase;letter-spacing:.4px}
+.pr table.prh-t td{border:0;border-bottom:1px solid #e2ddd5;padding:5px 7px}
+.pr table.prh-t tbody tr:nth-child(even) td{background:#faf8f4}
+.pr table.prh-t .c{text-align:center}.pr table.prh-t .r{text-align:right}.pr table.prh-t .b{font-weight:700}.pr table.prh-t td.dia{background:#f1ece4 !important;font-size:9pt;line-height:1.25;vertical-align:top;border-right:2px solid #fff}.pr table.prh-t td.desc{color:#444}
+.pr table.prh-t tr.sub td{background:#fff !important;font-size:8.5pt;color:#666;border-bottom:1.5px solid #c9c2b6;padding-top:3px;padding-bottom:3px}
+.pr table.prh-t tfoot td{background:#1f2a30 !important;color:#fff;font-weight:700;border:0;padding:7px}
+.prh-txt{font-size:11pt;line-height:1.55;margin:6px 0 14px}
+.prh-conta{margin:14px 0 0 auto;width:72mm;border:1px solid #d8d2c8;border-radius:6px;overflow:hidden}.prh-conta div{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #e2ddd5;font-size:10pt}.prh-conta div.tot{background:#1f2a30;color:#fff;border:0;font-size:11.5pt}
+.prh-data{margin-top:24px}
+.prh-ass{display:flex;justify-content:space-between;gap:20mm;margin-top:22mm}.prh-ass div{flex:1;border-top:1px solid #000;text-align:center;padding-top:4px;font-size:10pt}.prh-ass small{display:block;color:#666;font-size:8.5pt}
+
 .pr .lg{display:flex;align-items:center;gap:14px}
 .pr .lg img{height:16mm;width:auto}
 .pr .pb,.pb{break-before:page;page-break-before:always}
@@ -376,7 +394,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=133"></script>
-<script type="module" src="app.js?v=133"></script>
+<script src="config.js?v=134"></script>
+<script type="module" src="app.js?v=134"></script>
 </body>
 </html>
