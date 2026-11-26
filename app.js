@@ -1452,7 +1452,18 @@ async function printFolha(tec, ini, fim){
     return ls.map((h, k) => `<tr>${k === 0 ? `<td class="dia" rowspan="${ls.length}"><b>${DSEM[new Date(d + "T12:00:00").getDay()]}</b><br>${fmtDate(d).slice(0, 5)}</td>` : ""}<td>${esc(localH(h))}</td><td class="c">${esc(h.entrada)}</td><td class="c">${esc(h.saida)}</td><td class="c b">${hm(h.minutos)}</td><td class="desc">${esc(h.descricao)}</td></tr>`).join("")
       + `<tr class="sub"><td colspan="4" class="r">Total do dia</td><td class="c b">${hm(td)}</td><td></td></tr>`;
   }).join("");
-  await printHtml(`<div class="pr prh">${prhCab("Folha de horas", esc(nm(tec)), (semana ? "Semana de " : "Período de ") + fmtDate(ini) + " a " + fmtDate(fim))}
+  if(semana){
+    // uma semana: grelha com um dia por coluna (folha A4 deitada), como a folha em papel
+    const cols = []; for(let k = 0; k < 7; k++){ const d = addDays(ini, k); if(k < 5 || dias[d]) cols.push(d); }
+    await printHtml(`<div class="pr prh fit1 deitado sem">${prhCab("Folha de horas", esc(nm(tec)), "Semana de " + fmtDate(ini) + " a " + fmtDate(fim) + " · Total " + hm(tot))}
+      <div class="prh-gr" style="grid-template-columns:repeat(${cols.length},1fr)">${cols.map(d => { const ls = dias[d] || []; const td = ls.reduce((a, h) => a + h.minutos, 0);
+        return `<div class="prh-col"><div class="prh-dh"><b>${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][new Date(d + "T12:00:00").getDay()]}</b><span>${fmtDate(d).slice(0, 5)}</span></div>
+          ${ls.map(h => `<div class="prh-it"><div class="pi-l">${esc(localH(h))}</div><div class="pi-h">${esc(h.entrada)} – ${esc(h.saida)}<b>${hm(h.minutos)}</b></div>${h.descricao ? `<div class="pi-d">${esc(h.descricao)}</div>` : ""}</div>`).join("") || `<div class="prh-vz">—</div>`}
+          <div class="prh-dt">Total do dia <b>${td ? hm(td) : "—"}</b></div></div>`; }).join("")}</div>
+      <div class="prh-pe"><span>${l.length} registos · ${new Set(l.map(localH)).size} prédios / tarefas</span><span>Total da semana <b>${hm(tot)}</b></span></div></div>`);
+    return;
+  }
+  await printHtml(`<div class="pr prh fit1 deitado${l.length > 18 ? " compacto" : ""}">${prhCab("Folha de horas", esc(nm(tec)), (semana ? "Semana de " : "Período de ") + fmtDate(ini) + " a " + fmtDate(fim))}
     <div class="prh-res"><div><b>${hm(tot)}</b><span>Total de horas</span></div><div><b>${Object.keys(dias).length}</b><span>Dias com registo</span></div><div><b>${new Set(l.map(localH)).size}</b><span>Prédios / tarefas</span></div><div><b>${l.length}</b><span>Registos</span></div></div>
     <table class="prh-t"><thead><tr><th style="width:15mm">Dia</th><th>Prédio / tarefa</th><th class="c" style="width:15mm">Entrada</th><th class="c" style="width:15mm">Saída</th><th class="c" style="width:15mm">Total</th><th>Descrição do serviço</th></tr></thead>
     <tbody>${corpo || `<tr><td colspan="6" class="c">Sem registos neste período.</td></tr>`}</tbody>
@@ -2497,9 +2508,10 @@ async function printHtml(html){
   const fits = pa.querySelectorAll(".fit1");
   if(fits.length){
     // mede com as mesmas medidas da impressão (letra e margens da folha)
-    const antes = pa.style.cssText; pa.style.cssText = 'display:block;position:absolute;left:-10000px;top:0;width:210mm;visibility:hidden;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif';
-    const mm = 96 / 25.4, maxH = 297 * mm;
-    for(const el of fits){ el.style.zoom = ""; el.style.padding = "14mm"; el.style.boxSizing = "border-box"; const h = el.offsetHeight; el.style.padding = ""; el.style.boxSizing = ""; if(h > maxH * 0.97) el.style.zoom = Math.max(0.4, (maxH * 0.95 / h)).toFixed(3); }
+    const antes = pa.style.cssText; const mm = 96 / 25.4;
+    for(const el of fits){
+      const deitado = el.classList.contains("deitado"); const maxH = (deitado ? 210 : 297) * mm;
+      pa.style.cssText = `display:block;position:absolute;left:-10000px;top:0;width:${deitado ? 297 : 210}mm;visibility:hidden;font:11pt/1.4 "IBM Plex Sans",Arial,sans-serif`; el.style.zoom = ""; el.style.padding = "14mm"; el.style.boxSizing = "border-box"; const h = el.offsetHeight; el.style.padding = ""; el.style.boxSizing = ""; if(h > maxH * 0.97) el.style.zoom = Math.max(0.4, (maxH * 0.95 / h)).toFixed(3); }
     pa.style.cssText = antes;
   }
   try{ window.print(); }catch(_){ toast("Este dispositivo não permite imprimir daqui. Use o computador."); }
