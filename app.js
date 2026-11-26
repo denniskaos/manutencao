@@ -19,6 +19,7 @@ const fmtDate = s => { if(!s) return "—"; const [y,m,d] = String(s).slice(0,10
 const fmtDT = s => { if(!s) return ""; const d = new Date(s); return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),2800); }
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if(isIOS) document.documentElement.classList.add("ios"); // o iPhone põe margens próprias ao imprimir
 const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 
 const TIPOS_EQ = ["Elevador","Portão de garagem","Porta de entrada / fechadura","Intercomunicador / videoporteiro","Iluminação de áreas comuns","Quadro elétrico","Hidropressor / bombas de água","Bomba de esgoto / drenagem","Ventilação / desenfumagem da garagem","Extintores / SADI / incêndio","Antena / ITED","Piscina","Jardim / rega","Caldeira / AQS","Outro"];

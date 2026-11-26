@@ -341,6 +341,9 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
      a margem passa a ser feita pelo próprio documento, repetida em cada folha */
   @page{size:A4;margin:0}
   #printArea .pr{padding:14mm;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  /* iPhone: já põe margens e cabeçalho/rodapé próprios — sem margem extra, para não sobrar uma folha em branco */
+  html.ios #printArea .pr{padding:0 2mm}
+  html.ios #printArea .pr.sumpage{padding:0 2mm}
   #printArea .pr.sumpage{padding:10mm}
   html,body{background:#fff !important;height:auto !important;overflow:visible !important;display:block !important}
   main,nav,header,.scrim,.toast{display:none !important}
@@ -433,7 +436,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=145"></script>
-<script type="module" src="app.js?v=145"></script>
+<script src="config.js?v=146"></script>
+<script type="module" src="app.js?v=146"></script>
 </body>
 </html>
