@@ -1568,6 +1568,7 @@ function openCondo(id, startSub){
     return `<div class="panel"><dl class="kv">
       ${c.codigo?`<dt>Código</dt><dd class="mono">${esc(c.codigo)}</dd>`:""}
       <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}</dd>
+      ${c.lat != null && c.lon != null ? `<dt>Coordenadas</dt><dd class="mono">${c.lat}, ${c.lon} <a href="https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lon}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:4px;font-family:inherit">ver no mapa ↗</a></dd>` : ""}
       <dt>NIF</dt><dd class="mono">${esc(c.nif||"—")}</dd>
       ${c.admin?`<dt>Administração</dt><dd>${esc(c.admin)}</dd>`:""}
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
