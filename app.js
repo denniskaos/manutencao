@@ -1471,14 +1471,19 @@ async function printDeclaracao(tec){
   const sl = s0 => { const a = s0 < ini ? ini : s0; let b = addDays(s0, 4) < fim ? addDays(s0, 4) : fim; if(b < a) b = addDays(s0, 6) < fim ? addDays(s0, 6) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
   const ext = d => { const x = new Date(d + "T12:00:00"); return x.getDate() + " de " + x.toLocaleDateString("pt-PT", { month: "long" }) + (d.slice(0, 4) !== fim.slice(0, 4) || d === fim ? " de " + d.slice(0, 4) : ""); };
   const linhas = Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt"));
-  await printHtml(`<div class="pr prh">${prhCab("Declaração", "Prestação de serviços de manutenção", "")}
-    <p class="prh-txt">Eu, <b>${esc(nm(tec))}</b>, declaro que recebi a quantia de <b>${eur(totE)}</b> relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
-    <table class="prh-t"><thead><tr><th>Local / tarefa</th>${sems.map(s0 => `<th class="c">${sl(s0)}</th>`).join("")}<th class="c" style="width:16mm">Total (h)</th></tr></thead>
-    <tbody>${linhas.map(k => `<tr><td>${esc(k)}</td>${sems.map(s0 => `<td class="c">${n1(lin[k][s0])}</td>`).join("")}<td class="c b">${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</td></tr>`).join("") || `<tr><td colspan="${sems.length + 2}" class="c">Sem horas neste período.</td></tr>`}</tbody>
-    <tfoot><tr><td>Total por semana</td>${sems.map(s0 => `<td class="c">${n1(totS(s0))}</td>`).join("")}<td class="c">${totH.toFixed(1)}</td></tr></tfoot></table>
-    <div class="prh-conta"><div><span>Total de horas</span><b>${totH.toFixed(1).replace(".", ",")} h</b></div><div><span>Valor por hora</span><b>${eur(v)}</b></div><div class="tot"><span>Total a receber</span><b>${eur(totE)}</b></div></div>
-    <p class="prh-data">${esc(loc)}${loc ? ", " : ""}____ de ____________________ de ${fim.slice(0, 4)}</p>
-    <div class="prh-ass"><div>A Administração</div><div>O Colaborador<small>${esc(nm(tec))}</small></div></div></div>`);
+  const emp = S.empresa || {}; const cor = /^#[0-9a-f]{6}$/i.test(emp.cor || "") ? emp.cor : "#404040";
+  // igual à declaração em Excel: logo, linha de cor, DECLARAÇÃO ao centro, tabela por semana, resumo com total a receber em destaque, data e assinaturas
+  await printHtml(`<div class="pr dcl" style="--dc:${cor}">
+    <div class="dcl-top"><div class="dcl-logo">${prLogo() || `<b>${esc(emp.nome || "")}</b>`}</div><div class="dcl-loc">${esc(loc)}</div></div>
+    <h1 class="dcl-h">DECLARAÇÃO</h1><div class="dcl-s">Prestação de serviços de manutenção</div>
+    <p class="dcl-txt">Declara-se, para os devidos efeitos, que ${esc(nm(tec))} recebeu a quantia de <b>${eur(totE)}</b><br>relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
+    <table class="dcl-t"><thead><tr><th class="l">Local / Tarefa</th>${sems.map(s0 => `<th>${sl(s0)}</th>`).join("")}<th>Total (h)</th></tr></thead>
+    <tbody>${linhas.map(k => `<tr><td class="l">${esc(k)}</td>${sems.map(s0 => `<td>${n1(lin[k][s0])}</td>`).join("")}<td class="b">${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</td></tr>`).join("") || `<tr><td class="l" colspan="${sems.length + 2}">Sem horas neste período.</td></tr>`}</tbody>
+    <tfoot><tr><td class="l">Total por semana</td>${sems.map(s0 => `<td>${n1(totS(s0))}</td>`).join("")}<td>${totH.toFixed(1)}</td></tr></tfoot></table>
+    <table class="dcl-r"><tr><td>Total de horas</td><td>${totH.toFixed(1)} h</td></tr><tr><td>Valor por hora</td><td>${eur(v)}</td></tr><tr class="tot"><td>Total a receber</td><td>${eur(totE)}</td></tr></table>
+    <p class="dcl-data">${esc(loc)}${loc ? ", " : ""}____ de ________________ de ${fim.slice(0, 4)}</p>
+    <div class="dcl-ass"><div>A Administração</div><div>O Colaborador<small>(${esc(nm(tec))})</small></div></div>
+    ${emp.nome ? `<div class="dcl-rod">${esc(emp.nome)}${emp.subtitulo ? " — " + esc(emp.subtitulo) : ""}</div>` : ""}</div>`);
 }
 async function setFolhaVer(id, v){
   if(!VE_STOCK()) return;
