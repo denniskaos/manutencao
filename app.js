@@ -1564,15 +1564,15 @@ function openCondo(id, startSub){
     }
     if(sub === "equip") content = `<div class="list">${eqs.length ? eqs.map(e => `<div class="item" onclick="openEquip('${e.id}')"><div class="bar"></div><div class="main"><div class="t">${esc(e.nome)}</div><div class="s">${esc([e.tipo, e.local].filter(Boolean).join(" · "))}</div></div></div>`).join("") : emptyBox("Sem equipamentos registados.")}</div>${IS_ADMIN?`<div class="actions" style="margin-top:10px"><button class="btn" onclick="editEquip(null,'${id}')">+ Equipamento</button></div>`:""}`;
     const maps = (c.lat != null || c.morada) ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat != null ? c.lat + "," + c.lon : c.morada)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:13px;margin-left:6px">mapa ↗</a>` : "";
-    const geoLinha = c.geoFonte === "local" ? `<div class="muted" style="font-size:12.5px;margin-top:4px"><i class=ico-pin></i>Localização guardada${IS_ADMIN ? " · para corrigir, use Editar" : ""}</div>` : `<div style="margin-top:6px"><button class="btn sm" onclick="guardarAqui('${id}')"><i class=ico-pin></i>Estou aqui — guardar a localização do prédio</button></div>`;
+    const geoLinha = c.geoFonte === "local" ? `<div class="geol ok"><i class=ico-pin></i>Localização do prédio guardada${IS_ADMIN ? " · para corrigir, use Editar" : ""}</div>` : `<div class="geol"><button class="btn" onclick="guardarAqui('${id}')"><i class=ico-pin></i>Estou aqui — guardar localização</button><span>Carregue quando estiver no prédio.</span></div>`;
     return `<div class="panel"><dl class="kv">
       ${c.codigo?`<dt>Código</dt><dd class="mono">${esc(c.codigo)}</dd>`:""}
-      <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}${geoLinha}</dd>
+      <dt>Morada</dt><dd>${esc(c.morada||"—")}${maps}</dd>
       <dt>NIF</dt><dd class="mono">${esc(c.nif||"—")}</dd>
       ${c.admin?`<dt>Administração</dt><dd>${esc(c.admin)}</dd>`:""}
       ${c.contacto?`<dt>Contacto</dt><dd>${esc(c.contacto)}</dd>`:""}
       ${c.fracoes?`<dt>Frações</dt><dd>${esc(c.fracoes)}</dd>`:""}
-      ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl></div>
+      ${c.notas?`<dt>Acessos</dt><dd style="white-space:pre-wrap">${esc(c.notas)}</dd>`:""}</dl>${geoLinha}</div>
       <div class="actions" style="margin-bottom:14px">${IS_ADMIN?`<button class="btn" onclick="editCondo('${id}')">Editar</button>`:""}<span class="sp"></span><button class="btn dark" onclick="${IS_ADMIN ? `editOt(null,'${id}')` : `openTrabalho('${id}')`}">+ ${IS_ADMIN?"Nova ordem":"Novo trabalho"}</button></div>
       <div class="seg" style="margin-bottom:10px">
         <button class="${sub==="ordens"?"on":""}" onclick="condoSub('ordens')">Ordens${pend.length?` (${pend.length})`:""}</button>
