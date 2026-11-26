@@ -1483,7 +1483,16 @@ async function printDeclaracao(tec){
   await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim);
   // semanas (seg–sex) que caem dentro do período; uma semana só com sábado/domingo no período fica de fora se não tiver horas
   const sems = []; for(let d = segDe(ini); d <= fim; d = addDays(d, 7)){ const a = d < ini ? ini : d, b = addDays(d, 4) < fim ? addDays(d, 4) : fim; if(a <= b || l.some(h => segDe(h.dia) === d)) sems.push(d); }
-  const lin = {}; for(const h of l){ const k = localH(h); (lin[k] ||= {}); const s0 = segDe(h.dia); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
+  // Na declaração, as horas de "Manutenção" e "Reunião de manutenção" não aparecem à parte:
+  // em cada semana são repartidas pelos prédios onde trabalhou, sempre para o que tem menos horas (de meia em meia hora).
+  const ePool = h => !h.condoId && /^(reuni[aã]o de manuten[cç][aã]o|manuten[cç][aã]o)$/i.test((h.local || "").trim());
+  const lin = {}; const pool = {};
+  for(const h of l){ const s0 = segDe(h.dia); if(ePool(h)){ pool[s0] = (pool[s0] || 0) + h.minutos; continue; } const k = localH(h); (lin[k] ||= {}); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
+  for(const s0 of Object.keys(pool)){
+    let resto = pool[s0]; const alvo = Object.keys(lin).filter(k => lin[k][s0] > 0 && !/^(armaz|escrit)/i.test(k));
+    if(!alvo.length){ const k = "Manutenção"; (lin[k] ||= {}); lin[k][s0] = (lin[k][s0] || 0) + resto; continue; }
+    while(resto > 0){ const k = alvo.slice().sort((a, b) => lin[a][s0] - lin[b][s0] || a.localeCompare(b, "pt"))[0]; const q = Math.min(30, resto); lin[k][s0] += q; resto -= q; }
+  }
   const n1 = x => x ? (x / 60).toFixed(1) : "";
   const totS = s0 => l.filter(h => segDe(h.dia) === s0).reduce((a, h) => a + h.minutos, 0);
   const totH = l.reduce((a, h) => a + h.minutos, 0) / 60; const totE = Math.round(totH * v * 100) / 100;
