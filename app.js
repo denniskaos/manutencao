@@ -1428,7 +1428,7 @@ async function openDeclaracao(tec){
   const { data } = await sb.from("folha_valor").select("valor").eq("user_id", tec).maybeSingle();
   const t = today(); const de = t.slice(0, 8) + "01";
   openSheet("Declaração — " + esc(nm(tec)), `<p style="margin-top:0;font-size:14px;color:var(--muted)">Resumo por prédio e por semana, com o valor a receber. Só aparece para si.</p>
-    <div class="grid2"><label class="f"><span>De</span><input id="dc_de" type="date" value="${segDe(de)}"></label><label class="f"><span>Até</span><input id="dc_ate" type="date" value="${t}"></label></div>
+    <div class="grid2"><label class="f"><span>De</span><input id="dc_de" type="date" value="${de}"></label><label class="f"><span>Até</span><input id="dc_ate" type="date" value="${t}"></label></div>
     <div class="grid2"><label class="f"><span>Valor por hora (€)</span><input id="dc_v" inputmode="decimal" value="${data ? String(data.valor).replace(".", ",") : ""}" placeholder="Ex.: 5,50"></label><label class="f"><span>Local (para a data)</span><input id="dc_loc" value="${esc(lsGet("declLocal") || "")}" placeholder="Ex.: Freamunde"></label></div>
     <div class="actions"><button class="btn" onclick="openFolha('${tec}')">Voltar</button><span class="sp"></span><button class="btn pri" onclick="printDeclaracao('${tec}')"><i class=ico-print></i>Imprimir declaração</button></div>`);
 }
@@ -1437,19 +1437,20 @@ async function printDeclaracao(tec){
   if(!ini || !fim || fim < ini){ toast("Escolha as datas."); return; }
   await sb.from("folha_valor").upsert({ user_id: tec, valor: v });
   await carregarHoras(tec, ini, fim); const l = horasDe(tec, ini, fim);
-  const sems = []; for(let d = segDe(ini); d <= fim; d = addDays(d, 7)) sems.push(d);
+  // semanas (seg–sex) que caem dentro do período; uma semana só com sábado/domingo no período fica de fora se não tiver horas
+  const sems = []; for(let d = segDe(ini); d <= fim; d = addDays(d, 7)){ const a = d < ini ? ini : d, b = addDays(d, 4) < fim ? addDays(d, 4) : fim; if(a <= b || l.some(h => segDe(h.dia) === d)) sems.push(d); }
   const lin = {}; for(const h of l){ const k = localH(h); (lin[k] ||= {}); const s0 = segDe(h.dia); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
   const n1 = x => x ? (x / 60).toFixed(1) : "";
   const totS = s0 => l.filter(h => segDe(h.dia) === s0).reduce((a, h) => a + h.minutos, 0);
   const totH = l.reduce((a, h) => a + h.minutos, 0) / 60; const totE = Math.round(totH * v * 100) / 100;
-  const sl = s0 => { const a = s0 < ini ? ini : s0, b = addDays(s0, 6) > fim ? fim : addDays(s0, 4) < fim ? addDays(s0, 4) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
+  const sl = s0 => { const a = s0 < ini ? ini : s0; let b = addDays(s0, 4) < fim ? addDays(s0, 4) : fim; if(b < a) b = addDays(s0, 6) < fim ? addDays(s0, 6) : fim; return fmtDate(a).slice(0, 5) + " – " + fmtDate(b).slice(0, 5); };
   const ext = d => { const x = new Date(d + "T12:00:00"); return x.getDate() + " de " + x.toLocaleDateString("pt-PT", { month: "long" }) + (d.slice(0, 4) !== fim.slice(0, 4) || d === fim ? " de " + d.slice(0, 4) : ""); };
   await printHtml(`<div class="pr"><div class="hd"><div class="lg">${prLogo()}</div><div class="meta">${esc(loc)}</div></div>
     <h1 style="text-align:center;margin-top:10px">DECLARAÇÃO</h1><p style="text-align:center;margin:2px 0 14px;color:#555;font-style:italic">Prestação de serviços de manutenção</p>
     <p>Eu, ${esc(nm(tec))}, declaro que recebi a quantia de <b>${eur(totE)}</b> relativa à prestação de serviços no período de ${ext(ini)} a ${ext(fim)}.</p>
     <table><tr><th>Local / Tarefa</th>${sems.map(s0 => `<th style="text-align:center">${sl(s0)}</th>`).join("")}<th style="text-align:center">Total (h)</th></tr>
     ${Object.keys(lin).sort((a, b) => a.localeCompare(b, "pt")).map(k => `<tr><td>${esc(k)}</td>${sems.map(s0 => `<td style="text-align:center">${n1(lin[k][s0])}</td>`).join("")}<td style="text-align:center"><b>${n1(Object.values(lin[k]).reduce((a, b) => a + b, 0))}</b></td></tr>`).join("")}
-    <tr><th>Total por semana</th>${sems.map(s0 => `<th style="text-align:center">${n1(totS(s0)) || "0.0"}</th>`).join("")}<th style="text-align:center">${totH.toFixed(1)}</th></tr></table>
+    <tr><th>Total por semana</th>${sems.map(s0 => `<th style="text-align:center">${n1(totS(s0))}</th>`).join("")}<th style="text-align:center">${totH.toFixed(1)}</th></tr></table>
     <table style="width:auto;margin:14px 0 0 auto"><tr><td>Total de horas</td><td style="text-align:right">${totH.toFixed(1)} h</td></tr><tr><td>Valor por hora</td><td style="text-align:right">${eur(v)}</td></tr><tr><th>Total a receber</th><th style="text-align:right">${eur(totE)}</th></tr></table>
     <p style="margin-top:26px">${esc(loc)}${loc ? ", " : ""}____ de ________________ de ${fim.slice(0, 4)}</p>
     <div style="display:flex;justify-content:space-between;margin-top:46px"><div style="border-top:1px solid #000;width:60mm;text-align:center;padding-top:3px">A Administração</div><div style="border-top:1px solid #000;width:70mm;text-align:center;padding-top:3px">O Colaborador<br><span style="font-size:9pt;color:#555">(${esc(nm(tec))})</span></div></div></div>`);
