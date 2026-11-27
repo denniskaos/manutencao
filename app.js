@@ -1348,6 +1348,10 @@ const minEntre = (a, b) => { if(!a || !b) return 0; const [h1, m1] = a.split(":"
 const DSEM = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const diaCurto = d => DSEM[new Date(d + "T12:00:00").getDay()] + " " + fmtDate(d).slice(0, 5);
 const localH = h => h.condoId && S.condos[h.condoId] ? cLabel(S.condos[h.condoId]) : (h.local || "—");
+// nomes encurtados para as impressões das horas (Edifício → Ed., Rua → R., …)
+const ABREV = [[/^condom[ií]nio\s+(do\s+)?/i, "Cond. "], [/\bedif[ií]cio\s+(sito\s+n[ao]\s+)?/gi, "Ed. "], [/\bempreendimento\b/gi, "Emp."], [/\burbaniza[cç][aã]o\b/gi, "Urb."], [/\bavenida\b/gi, "Av."], [/\btravessa\b/gi, "Tv."], [/\bpraceta\b/gi, "Pct."], [/\brua\b/gi, "R."], [/\bestrada nacional\b/gi, "EN"], [/\bbombeiros volunt[aá]rios\b/gi, "B. Vol."], [/\bnossa senhora\b/gi, "N.ª Sr.ª"], [/\bpadre\b/gi, "P."], [/\bquinta\b/gi, "Qta."], [/\bparque\b/gi, "Pq."], [/\bestacionamento\b/gi, "Estac."], [/\bbloco\b/gi, "Bl."], [/\b(entrada|ent[ªa]\.?)(?=\s|$)/gi, "Ent."], [/\bn\.?\s?[ºo°]s?\b\.?/gi, "n.º"], [/\s+-\s*/g, " - "], [/\s{2,}/g, " "], [/^((?:Ed\.|Cond\.) [A-ZÁÉÍÓÚÇ]{2,6}) - .+$/, "$1"]];
+const curto = t => ABREV.reduce((a, [r, x]) => a.replace(r, x), String(t || "")).trim();
+const localHC = h => h.condoId && S.condos[h.condoId] ? (S.condos[h.condoId].codigo ? S.condos[h.condoId].codigo + " — " : "") + curto(S.condos[h.condoId].nome) : (h.local || "—");
 const temFolha = id => !!(S.equipa[id] || {}).folhaHoras;
 async function carregarHoras(tec, ini, fim){
   let data, error; try{ ({ data, error } = await sb.from("horas").select("*").eq("tecnico", tec).gte("dia", ini).lte("dia", fim)); }catch(e){ error = e; }
@@ -1450,7 +1454,7 @@ async function printFolha(tec, ini, fim){
   const semana = ini === segDe(ini) && fim === addDays(ini, 6);
   const corpo = Object.keys(dias).sort().map(d => {
     const ls = dias[d]; const td = ls.reduce((a, h) => a + h.minutos, 0);
-    return ls.map((h, k) => `<tr>${k === 0 ? `<td class="dia" rowspan="${ls.length}"><b>${DSEM[new Date(d + "T12:00:00").getDay()]}</b><br>${fmtDate(d).slice(0, 5)}</td>` : ""}<td>${esc(localH(h))}</td><td class="c">${esc(h.entrada)}</td><td class="c">${esc(h.saida)}</td><td class="c b">${hm(h.minutos)}</td><td class="desc">${esc(h.descricao)}</td></tr>`).join("")
+    return ls.map((h, k) => `<tr>${k === 0 ? `<td class="dia" rowspan="${ls.length}"><b>${DSEM[new Date(d + "T12:00:00").getDay()]}</b><br>${fmtDate(d).slice(0, 5)}</td>` : ""}<td>${esc(localHC(h))}</td><td class="c">${esc(h.entrada)}</td><td class="c">${esc(h.saida)}</td><td class="c b">${hm(h.minutos)}</td><td class="desc">${esc(h.descricao)}</td></tr>`).join("")
       + `<tr class="sub"><td colspan="4" class="r">Total do dia</td><td class="c b">${hm(td)}</td><td></td></tr>`;
   }).join("");
   if(semana){
@@ -1459,7 +1463,7 @@ async function printFolha(tec, ini, fim){
     await printHtml(`<div class="pr prh fit1 deitado sem">${prhCab("Folha de horas", esc(nm(tec)), "Semana de " + fmtDate(ini) + " a " + fmtDate(fim) + " · Total " + hm(tot))}
       <div class="prh-gr" style="grid-template-columns:repeat(${cols.length},1fr)">${cols.map(d => { const ls = dias[d] || []; const td = ls.reduce((a, h) => a + h.minutos, 0);
         return `<div class="prh-col"><div class="prh-dh"><b>${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][new Date(d + "T12:00:00").getDay()]}</b><span>${fmtDate(d).slice(0, 5)}</span></div>
-          ${ls.map(h => `<div class="prh-it"><div class="pi-l">${esc(localH(h))}</div><div class="pi-h">${esc(h.entrada)} – ${esc(h.saida)}<b>${hm(h.minutos)}</b></div>${h.descricao ? `<div class="pi-d">${esc(h.descricao)}</div>` : ""}</div>`).join("") || `<div class="prh-vz">—</div>`}
+          ${ls.map(h => `<div class="prh-it"><div class="pi-l">${esc(localHC(h))}</div><div class="pi-h">${esc(h.entrada)} – ${esc(h.saida)}<b>${hm(h.minutos)}</b></div>${h.descricao ? `<div class="pi-d">${esc(h.descricao)}</div>` : ""}</div>`).join("") || `<div class="prh-vz">—</div>`}
           <div class="prh-dt">Total do dia <b>${td ? hm(td) : "—"}</b></div></div>`; }).join("")}</div>
       <div class="prh-pe"><span>${l.length} registos · ${new Set(l.map(localH)).size} prédios / tarefas</span><span>Total da semana <b>${hm(tot)}</b></span></div></div>`);
     return;
@@ -1499,7 +1503,7 @@ async function printDeclaracao(tec){
   // em cada semana são repartidas pelos prédios onde trabalhou, sempre para o que tem menos horas (de meia em meia hora).
   const ePool = h => !h.condoId && /^(reuni[aã]o de manuten[cç][aã]o|manuten[cç][aã]o)$/i.test((h.local || "").trim());
   const lin = {}; const pool = {};
-  for(const h of l){ const s0 = segDe(h.dia); if(ePool(h)){ pool[s0] = (pool[s0] || 0) + h.minutos; continue; } const k = localH(h); (lin[k] ||= {}); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
+  for(const h of l){ const s0 = segDe(h.dia); if(ePool(h)){ pool[s0] = (pool[s0] || 0) + h.minutos; continue; } const k = localHC(h); (lin[k] ||= {}); lin[k][s0] = (lin[k][s0] || 0) + h.minutos; }
   for(const s0 of Object.keys(pool)){
     let resto = pool[s0]; const alvo = Object.keys(lin).filter(k => lin[k][s0] > 0 && !/^(armaz|escrit)/i.test(k));
     if(!alvo.length){ const k = "Manutenção"; (lin[k] ||= {}); lin[k][s0] = (lin[k][s0] || 0) + resto; continue; }
