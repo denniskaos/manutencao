@@ -1351,7 +1351,7 @@ const localH = h => h.condoId && S.condos[h.condoId] ? cLabel(S.condos[h.condoId
 // nomes encurtados para as impressões das horas (Edifício → Ed., Rua → R., …)
 const ABREV = [[/^condom[ií]nio\s+(do\s+)?/i, "Cond. "], [/\bedif[ií]cio\s+(sito\s+n[ao]\s+)?/gi, "Ed. "], [/\bempreendimento\b/gi, "Emp."], [/\burbaniza[cç][aã]o\b/gi, "Urb."], [/\bavenida\b/gi, "Av."], [/\btravessa\b/gi, "Tv."], [/\bpraceta\b/gi, "Pct."], [/\brua\b/gi, "R."], [/\bestrada nacional\b/gi, "EN"], [/\bbombeiros volunt[aá]rios\b/gi, "B. Vol."], [/\bnossa senhora\b/gi, "N.ª Sr.ª"], [/\bpadre\b/gi, "P."], [/\bquinta\b/gi, "Qta."], [/\bparque\b/gi, "Pq."], [/\bestacionamento\b/gi, "Estac."], [/\bbloco\b/gi, "Bl."], [/\b(entrada|ent[ªa]\.?)(?=\s|$)/gi, "Ent."], [/\bn\.?\s?[ºo°]s?\b\.?/gi, "n.º"], [/\s+-\s*/g, " - "], [/\s{2,}/g, " "], [/^((?:Ed\.|Cond\.) [A-ZÁÉÍÓÚÇ]{2,6}) - .+$/, "$1"]];
 const curto = t => ABREV.reduce((a, [r, x]) => a.replace(r, x), String(t || "")).trim();
-const localHC = h => h.condoId && S.condos[h.condoId] ? (S.condos[h.condoId].codigo ? S.condos[h.condoId].codigo + " — " : "") + curto(S.condos[h.condoId].nome) : (h.local || "—");
+const localHC = h => h.condoId && S.condos[h.condoId] ? curto(S.condos[h.condoId].nome) : (h.local || "—");
 const temFolha = id => !!(S.equipa[id] || {}).folhaHoras;
 async function carregarHoras(tec, ini, fim){
   let data, error; try{ ({ data, error } = await sb.from("horas").select("*").eq("tecnico", tec).gte("dia", ini).lte("dia", fim)); }catch(e){ error = e; }
