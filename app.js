@@ -209,7 +209,7 @@ function subscribeRealtime(){
   for(const [table, col] of Object.entries(map)){
     ch.on("postgres_changes", { event: "*", schema: "public", table }, p => {
       if(p.eventType === "DELETE"){ if(p.old && p.old.id) delete S[col][p.old.id]; }
-      else { const o = fromRow(p.new); S[col][o.id] = o; if(col === "equipa" && o.id === ME){ IS_ADMIN = o.papel === "admin"; if(!o.ativo) location.reload(); } }
+      else { const o = fromRow(p.new); const antes = col === "equipa" && o.id === ME && temFolha(ME); S[col][o.id] = o; if(col === "equipa" && o.id === ME){ IS_ADMIN = o.papel === "admin"; if(!o.ativo) location.reload(); if(o.folhaHoras && !antes){ fhIni = segDe(today()); carregarHoras(ME, addDays(fhIni, -28), addDays(fhIni, 6)).then(renderDepois).catch(() => {}); } } }
       renderDepois();
     });
   }
@@ -243,6 +243,10 @@ async function refreshQuiet(){
     ]);
     if(ots) S.ots = Object.fromEntries(ots.map(r => [r.id, fromRow(r)])); if(ots && ots.length) S.diasCol = ots.some(r => "dias" in r); if(ots && ots.length){ S.faltaCol = ots.some(r => "falta" in r); S.folhaCol = ots.some(r => "de_folha" in r); }
     if(notifs) S.notifs = notifs.map(fromRow);
+    // o próprio perfil pode ter mudado no escritório (ex.: folha de horas ligada) — apanha sem ter de sair da app
+    try{ const { data: eu } = await sb.from("perfis").select("*").eq("id", ME).maybeSingle();
+      if(eu){ const tinha = temFolha(ME); S.equipa[ME] = { ...S.equipa[ME], ...fromRow(eu) }; IS_ADMIN = S.equipa[ME].papel === "admin";
+        if(!tinha && temFolha(ME)){ fhIni = segDe(today()); await carregarHoras(ME, addDays(fhIni, -28), addDays(fhIni, 6)); } } }catch(e){ console.warn(e); }
     render(); autoReadNotifs();
   } finally { refreshing = false; }
 }
