@@ -373,12 +373,13 @@ const fornLinha = x => (x && (x.fo || (x.c && (S.mat[x.c] || {}).fornecedor))) |
 const dlForn = () => document.getElementById("dl_mforn") ? "" : `<datalist id="dl_mforn">${[...new Set(Object.values(S.mat).map(m => m.fornecedor).filter(Boolean))].sort().map(f => `<option value="${esc(f)}">`).join("")}</datalist>`;
 // Escolha de material sem a lista nativa do Android (que ocupa o ecrã todo):
 // um campo que abre por baixo uma lista curta, com procura e por grupos.
-function matPicker(id, onch, comCod){
-  const ops = matList().map(m => `<option value="${esc(m.codigo)}">${esc(m.nome)}${comCod ? " · " + esc(m.codigo) : ""}</option>`).join("");
+const isTouch = () => matchMedia("(pointer: coarse)").matches;
+function matPicker(id, onch, comCod, opt = {}){
+  const ops = matList().map(m => `<option value="${esc(m.codigo)}"${m.codigo === opt.sel ? " selected" : ""}>${esc(m.nome)}${comCod ? " · " + esc(m.codigo) : ""}</option>`).join("");
   // no iPhone a lista nativa é boa (roda por baixo), por isso fica a normal
-  if(isIOS) return `<select id="${id}" class="search" style="margin:8px 0 0" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>`;
-  return `<select id="${id}" style="display:none" onchange="${onch}"><option value="">— Escolher material —</option>${ops}<option value="__outro">Outro material (escrever)…</option></select>
-    <div class="mpk" id="${id}_pk"><button type="button" class="mpk-b" onclick="mpkAbrir('${id}')"><span id="${id}_lbl">— Escolher material —</span><span class="mpk-c">▾</span></button>
+  if(isIOS) return `<select id="${id}" class="search" style="margin:8px 0 0" onchange="${onch}"><option value="">— Escolher material —</option>${ops}${opt.semOutro ? "" : `<option value="__outro">Outro material (escrever)…</option>`}</select>`;
+  return `<select id="${id}" style="display:none" onchange="${onch}"><option value="">— Escolher material —</option>${ops}${opt.semOutro ? "" : `<option value="__outro">Outro material (escrever)…</option>`}</select>
+    <div class="mpk" id="${id}_pk"><button type="button" class="mpk-b" onclick="mpkAbrir('${id}')"><span id="${id}_lbl">${opt.sel && S.mat[opt.sel] ? esc(S.mat[opt.sel].nome) : "— Escolher material —"}</span><span class="mpk-c">▾</span></button>
     <div class="mpk-p" id="${id}_pp" style="display:none" onclick="if(event.target===this)mpkAbrir('${id}')"><div class="mpk-m"><input class="search" id="${id}_q" placeholder="Procurar…" autocomplete="off" oninput="mpkLista('${id}')"><div class="mpk-l" id="${id}_l"></div></div></div></div>`;
 }
 function mpkAbrir(id){ const p = document.getElementById(id + "_pp"); if(!p) return; const ab = p.style.display === "none"; p.style.display = ab ? "" : "none"; if(ab){ mpkLista(id); const q = document.getElementById(id + "_q"); if(q){ q.value = ""; mpkLista(id); } } }
@@ -389,24 +390,25 @@ function mpkLista(id){
   const cur = (document.getElementById(id) || {}).value || "";
   const op = (v, t, cls) => `<button type="button" class="${cls || ""}${cur === v ? " on" : ""}" onclick="mpkEscolher('${id}','${esc(v)}')"><span class="ck">${cur === v ? "✓" : ""}</span>${t}</button>`;
   l.innerHTML = (qq ? "" : op("", "— Escolher material —")) + Object.entries(g).map(([k, a]) => (Object.keys(g).length > 1 ? `<div class="mpk-g">${esc(k)}</div>` : "") + a.map(m => op(m.codigo, esc(m.nome))).join("")).join("")
-    + op("__outro", "Outro material (escrever)…", "mpk-o");
+    + ((document.getElementById(id) || {}).querySelector && document.getElementById(id).querySelector('option[value="__outro"]') ? op("__outro", "Outro material (escrever)…", "mpk-o") : "");
 }
 function mpkEscolher(id, v){
   const s = document.getElementById(id); if(!s) return; s.value = v; s.dispatchEvent(new Event("change"));
   const lb = document.getElementById(id + "_lbl"); if(lb) lb.textContent = v === "__outro" ? "Outro material (escrever)…" : (S.mat[v] || {}).nome || "— Escolher material —";
   const p = document.getElementById(id + "_pp"); if(p) p.style.display = "none";
   if(v === "__outro"){ const n = document.getElementById(id === "p_sel" ? "p_nome" : "tw_nome"); if(n){ n.style.display = ""; n.focus(); } }
-  else { const q = document.getElementById(id === "p_sel" ? "p_qtd" : "tw_qtd"); if(q){ if(!q.value) q.value = 1; } }
+  else if(id === "mv_art"){ const q = document.getElementById("mv_qtd"); if(q) q.focus(); }
+  else { const q = document.getElementById(id === "p_sel" ? "p_qtd" : "tw_qtd"); if(q && !isTouch()) q.focus(); }
 }
 // quando o estado do formulário é reposto (ou limpo), o rótulo acompanha o valor escondido
-function mpkSync(){ for(const id of ["p_sel", "tw_sel"]){ const s = document.getElementById(id), lb = document.getElementById(id + "_lbl"); if(s && lb) lb.textContent = !s.value ? "— Escolher material —" : s.value === "__outro" ? "Outro material (escrever)…" : (S.mat[s.value] || {}).nome || s.value; } }
+function mpkSync(){ for(const id of ["p_sel", "tw_sel", "mv_art"]){ const s = document.getElementById(id), lb = document.getElementById(id + "_lbl"); if(s && lb) lb.textContent = !s.value ? "— Escolher material —" : s.value === "__outro" ? "Outro material (escrever)…" : (S.mat[s.value] || {}).nome || s.value; } }
 function pendingPart(){
   const sel = document.getElementById("p_sel"); const qt = parseFloat(val("p_qtd")) || 1;
   if(sel && sel.value && sel.value !== "__outro"){ const m = S.mat[sel.value]; if(m) return {n: m.nome, c: m.codigo, q: qt, ...lerFat("p")}; }
   const n = val("p_nome"); return n ? {n, q: qt, ...lerFat("p")} : null;
 }
 function clearPart(){ const sel = $("#p_sel"), a = $("#p_nome"), b = $("#p_qtd"); if(sel){ sel.value = ""; setTimeout(mpkSync); } if(a){ a.value = ""; a.style.display = matList().length ? "none" : ""; } if(b) b.value = ""; }
-function onPartSel(v){ const a = $("#p_nome"); if(!a) return; a.style.display = v === "__outro" ? "" : "none"; if(v === "__outro") a.focus(); else if(v) { const q = $("#p_qtd"); if(q && !q.value) q.value = 1; } }
+function onPartSel(v){ const a = $("#p_nome"); if(!a) return; a.style.display = v === "__outro" ? "" : "none"; if(v === "__outro") a.focus(); else if(v) { const q = $("#p_qtd"); if(q && !isTouch()) q.focus(); } }
 const EUR = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" });
 const eur = v => EUR.format(Number(v) || 0);
 const unitPrice = x => (x.p !== undefined && x.p !== "" && x.p !== null) ? Number(x.p) : (x.c && S.precos[x.c] !== undefined ? S.precos[x.c] : null);
@@ -629,7 +631,7 @@ const condoFilterSel = () => condoF && S.condos[condoF]
 function procCondoF(v){
   const res = document.getElementById("cf_res"); if(!res) return; const qq = (v || "").trim();
   if(!qq){ res.innerHTML = ""; return; }
-  const found = condosSorted().filter(c => hit([c.codigo, c.nome, c.morada].join(" "), qq));
+  const found = procCondos(qq);
   res.innerHTML = found.length ? found.slice(0, 12).map(c => `<button type="button" onmousedown="event.preventDefault()" onclick="condoF='${c.id}';render()"><b class="mono">${esc(c.codigo || "")}</b> ${esc(c.nome)}<small>${esc(c.morada || "")}</small></button>`).join("") + (found.length > 12 ? `<div class="mais">e mais ${found.length - 12} — escreva mais letras</div>` : "") : `<div class="mais">Nenhum condomínio encontrado.</div>`;
 }
 const techFilterSel = () => IS_ADMIN ? `<select class="search" onchange="techF=this.value;render()"><option value="">Todas as pessoas</option><option value="-" ${techF==="-"?"selected":""}>Por atribuir</option>${pessoasAgrupadas(techF)}</select>` : "";
@@ -865,7 +867,7 @@ function viewCondos(){
   const mine = myOts();
   const pendOf = {}; for(const o of mine) if(o.estado !== "concluida"){ const c = condoOf(o); pendOf[c] = (pendOf[c] || 0) + 1; }
   const lateOf = {}; if(IS_ADMIN) for(const p of Object.values(S.plans)) if(planStatus(p)[3] < 0){ const c = condoOf(p); lateOf[c] = (lateOf[c] || 0) + 1; }
-  const list = condosSorted().filter(c => !q || hit([c.codigo,c.nome,c.morada,c.admin,c.nif].join(" "), q)).filter(c => !condoPend || pendOf[c.id]);
+  const list = procCondos(q, c => [c.admin]).filter(c => !condoPend || pendOf[c.id]);
   const nPend = condosSorted().filter(c => pendOf[c.id]).length;
   const row = c => `<div class="prow" onclick="openCondo('${c.id}')"><span class="mono pd" style="color:var(--accent);font-weight:600;min-width:52px">${esc(c.codigo || "")}</span><span class="pn">${esc(c.nome)}<small>${esc(c.morada || "")}</small></span>${pendOf[c.id] ? `<span class="badge b-amber">${pendOf[c.id]}</span>` : ""}${lateOf[c.id] ? `<span class="badge b-red">${lateOf[c.id]} prev.</span>` : ""}</div>`;
   const zona = c => ((c.codigo || "").match(/^[A-Z]+/) || ["Outros"])[0];
@@ -1114,12 +1116,18 @@ function armDelete(btn, fn){
   setTimeout(() => { if(btn.isConnected){ btn.classList.remove("arm"); btn.textContent = btn.dataset.label || "Eliminar"; } }, 4000);
 }
 const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
-const condoOptions = (sel, f) => `<option value="">— Selecione —</option>` + condosSorted().filter(c => c.id === sel || !f || hit([c.codigo,c.nome,c.morada,c.nif].join(" "), f)).map(c => `<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(cLabel(c))}</option>`).join("");
+// procura de prédios: se o texto bate no código ou no nome, mostra só esses; a morada (e o resto) só conta quando não há nenhum pelo nome
+function procCondos(q, extra){
+  const todos = condosSorted(); if(!q) return todos;
+  const pNome = todos.filter(c => hit([c.codigo, c.nome].join(" "), q));
+  return pNome.length ? pNome : todos.filter(c => hit([c.codigo, c.nome, c.morada, c.nif, ...(extra ? extra(c) : [])].join(" "), q));
+}
+const condoOptions = (sel, f) => `<option value="">— Selecione —</option>` + (() => { const l = procCondos(f); return condosSorted().filter(c => c.id === sel || l.includes(c)); })().map(c => `<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(cLabel(c))}</option>`).join("");
 const condoPicker = (sel, onch) => `<div class="f"><span>Condomínio *</span><input id="f_cq" placeholder="Procurar por código, nome ou morada…" oninput="filterCondoSel(this.value)" autocomplete="off" style="margin-bottom:6px"><div id="f_cres" class="cres"></div><select id="f_condo" ${onch?'onchange="onCondoChange()"':""}>${condoOptions(sel)}</select></div>`;
 function filterCondoSel(v){
   const s = $("#f_condo"); if(!s) return; const cur = s.value; s.innerHTML = condoOptions(cur, v);
   const res = $("#f_cres"); const q = (v || "").trim();
-  const found = q ? condosSorted().filter(c => hit([c.codigo, c.nome, c.morada, c.nif].join(" "), q)) : [];
+  const found = q ? procCondos(q) : [];
   if(found.length === 1 && !cur){ escolherCondo(found[0].id); return; }
   if(res) res.innerHTML = !q ? "" : found.length ? found.slice(0, 8).map(c => `<button type="button" onclick="escolherCondo('${c.id}')"><b class="mono">${esc(c.codigo || "")}</b> ${esc(c.nome)}<small>${esc(c.morada || "")}</small></button>`).join("") + (found.length > 8 ? `<div class="mais">Mais ${found.length - 8} — escreva mais letras para afinar.</div>` : "") : `<div class="mais">Nenhum condomínio encontrado.</div>`;
 }
@@ -2861,7 +2869,7 @@ function openMov(tipo, codigo){
     ${campos}
     <label class="f"><span>Data</span><input type="date" id="mv_data" value="${today()}"></label>
     <div class="panel"><b>Artigos</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
-      <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}" ${a.codigo===codigo?"selected":""}>${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
+      <div class="addpart" style="flex-wrap:wrap"><div style="flex:1 1 100%;margin-bottom:6px">${matPicker("mv_art", "", true, { semOutro: true, sel: codigo || "" })}</div>
       <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('${tipo}')">${tipo === "compra" ? `<input id="mv_preco" inputmode="decimal" placeholder="€/un" style="width:80px">` : ""}<button class="btn sm" onclick="addMovLine('${tipo}')">Adicionar</button></div></div>
     <label class="f"><span>Observações</span><input id="mv_obs" placeholder="${tipo === "ajuste" ? "Motivo (ex.: contagem, partido)" : "Opcional"}"></label>
     <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" onclick="saveMov('${tipo}')">Guardar</button></div>`);
@@ -2870,9 +2878,10 @@ function openMov(tipo, codigo){
 function drawMovLines(){ const el = $("#mv_lines"); if(!el) return; el.innerHTML = movLines.map((x, i) => `<div class="part"><span class="n">${esc((S.mat[x.c] || {}).nome || x.c)}</span><span class="mono">× ${numTxt(x.q)}${x.p != null ? " · " + eur(x.p) + "/un" : ""}</span><button class="btn sm" onclick="movLines.splice(${i},1);drawMovLines()">✕</button></div>`).join("") || '<span style="color:var(--muted);font-size:14px">Escolha o artigo, a quantidade e carregue em Adicionar.</span>'; }
 function addMovLine(tipo){
   const c = val("mv_art"), q = parseFloat(String(val("mv_qtd")).replace(",", "."));
-  if(!c || !(q > 0)){ toast("Indique a quantidade."); return; }
+  if(!c){ toast("Escolha o material."); return; }
+  if(!(q > 0)){ toast("Indique a quantidade."); return; }
   let p = null; if(tipo === "compra" && val("mv_preco")){ p = parsePrice(val("mv_preco")); if(p === null){ toast("Preço inválido."); return; } }
-  movLines.push({ c, q, p }); $("#mv_qtd").value = ""; if($("#mv_preco")) $("#mv_preco").value = ""; drawMovLines(); $("#mv_qtd").focus();
+  movLines.push({ c, q, p }); $("#mv_qtd").value = ""; if($("#mv_preco")) $("#mv_preco").value = ""; $("#mv_art").value = ""; mpkSync(); drawMovLines();
 }
 async function saveMov(tipo){
   if(val("mv_qtd")) addMovLine(tipo);
@@ -3006,7 +3015,7 @@ function openSaidaDireta(editId){
     ${ed ? `<div class="note" style="font-size:13px">Pode corrigir até ${esc(entregaLimite(ed))}. Depois disso fica só para consulta.</div>` : ""}
     ${condoPicker(ed ? condoOf(ed) : "")}
     <div class="panel"><b>Material</b><div id="mv_lines" class="parts" style="margin-top:6px"></div>
-      <div class="addpart" style="flex-wrap:wrap"><select id="mv_art" style="flex:1 1 100%;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff">${stkArtigos().map(a => `<option value="${esc(a.codigo)}">${esc(a.nome)} · ${esc(a.codigo)}</option>`).join("")}</select>
+      <div class="addpart" style="flex-wrap:wrap"><div style="flex:1 1 100%;margin-bottom:6px">${matPicker("mv_art", "", true, { semOutro: true })}</div>
       <input id="mv_qtd" type="number" min="0" step="any" placeholder="Qtd" onkeydown="if(event.key==='Enter')addMovLine('saida')"><button class="btn sm" onclick="addMovLine('saida')">Adicionar</button></div></div>
     ${VE_STOCK() ? `<label class="f"><span>Sai de</span><select id="mv_origem" onchange="origemEntrega(this.value)">${locaisList().filter(l => l.ativo !== false).map(l => `<option value="${l.id}" ${l.id === ((ed && ed.origemStock) || "principal") ? "selected" : ""}>${esc(l.nome)}</option>`).join("")}</select></label>` : ""}
     <div class="grid2"><label class="f"><span>Data</span><input type="date" id="mv_data" value="${ed ? esc(ed.data || today()) : today()}"></label>
