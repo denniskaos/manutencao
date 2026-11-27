@@ -648,7 +648,7 @@ function viewEstado(){
 }
 
 // ordens agrupadas por tipo (videoporteiros, iluminação, infiltrações…), o tipo com mais ordens primeiro
-const ICO_TIPO = { "Infiltrações e águas": "drop", "Videoporteiros, campainhas e portas": "bell", "Portões e garagem": "gate", "Iluminação": "bulb", "Eletricidade": "bolt", "Placas e sinalização": "signp", "Elevadores": "lift", "Outros": "wrench" };
+const ICO_TIPO = { "Infiltrações e águas": "drop", "Videoporteiros, campainhas e portas": "bell", "Portões e garagem": "gate", "Iluminação": "bulb", "Eletricidade": "bolt", "Placas e sinalização": "signp", "Elevadores": "lift", "Ventilação e exaustão": "fan", "Outros": "wrench" };
 function porTipo(lista, pref){
   const g = new Set(lista.map(grupoOc));
   if(g.size === 1 && g.has("Outros")) return `<div class="list">${lista.map(o => otItem(o)).join("")}</div>`;
@@ -2068,7 +2068,8 @@ let notesTimer = null;
 const GRUPOS_OC = [
   { g: "Infiltrações e águas", re: /infiltr|humid|bolor|água|agua|chuva|caleir|ralo|entup|esgoto|saneamento|tubo de queda|verte|goteira/i, svc: 3, mat: /silicone|veda|desentup/i },
   { g: "Videoporteiros, campainhas e portas", re: /campainh|intercom|video ?porteiro|videop|botoneir|trinco|fechadura|canh[aã]o|n[aã]o abre|porta (de )?entrada|mola/i, svc: 1, mat: /campainh|botoneir|fechadur|canh|trinco/i },
-  { g: "Portões e garagem", re: /port[aã]o|comando|garagem|motor/i, svc: 2, mat: /comando|lubrific|massa/i },
+  { g: "Ventilação e exaustão", re: /exaust|extrator|extra[cç][aã]o d[eo]s? (ar|fumos?)|ventila[cç]|ventilador|ventoinha|rolament/i, svc: 7, mat: /rolament|correia|ventil|exaust/i },
+  { g: "Portões e garagem", re: /port[aã]o|comando|garagem|motor (do |de )?port/i, svc: 2, mat: /comando|lubrific|massa/i },
   { g: "Iluminação", re: /l[aâ]mpad|luz|luzes|ilumin|sensor|temporizador|foco|apag/i, svc: 0, mat: /l[aâ]mpad|foco|led|sensor/i },
   { g: "Eletricidade", re: /quadro el|disjunt|diferencial|tomada|curto|eletric/i, svc: 4, mat: /tomada|disjunt/i },
   { g: "Placas e sinalização", re: /placa|sinal[eé]tica|sinaliza|pinos/i, svc: 5, mat: /placa|quadro/i },
@@ -2175,6 +2176,7 @@ const SERVICOS = [
   ["Eletricidade", ["Verificação do quadro elétrico das zonas comuns", "Rearme de disjuntor / diferencial", "Substituição de tomada"]],
   ["Limpeza e conservação", ["Aplicação de placas (animais, estacionamento) e quadros acrílicos", "Colocação de pinos ou sinalização no estacionamento", "Limpeza de garagem / arrumos comuns"]],
   ["Visitas", ["Acompanhamento de empresa externa", "Visita para orçamento / avaliação"]],
+  ["Ventilação e exaustão", ["Substituição de rolamentos do motor de exaustão", "Verificação do motor de exaustão / ventilador", "Substituição de correia do ventilador", "Limpeza de grelhas e condutas de ventilação"]],
 ];
 const svcTabSel = {};
 function servicosPicker(alvo, notas){
