@@ -428,6 +428,18 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .pr .sig span{display:block;width:100%;border-top:1px solid #000;padding-top:4px;font-size:9.5pt;text-align:center}
 .pr .sig .sgimg{max-height:18mm;max-width:70%;margin-bottom:-1mm;position:relative;z-index:1}
 .pr .ft{margin-top:18px;font-size:8.5pt;color:#555;text-align:center}
+.bsel{margin:10px 0 4px;max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+.bsel:empty{display:none}
+.bsel-top{display:flex;align-items:center;gap:6px;padding:8px 10px;position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);z-index:1}
+.bsel-top .sp{flex:1}
+.bsel-g{padding:4px 0;border-bottom:1px solid var(--line)}.bsel-g:last-child{border-bottom:0}
+.bsel-t{display:flex;gap:8px;align-items:center;padding:6px 10px;font-weight:600}
+.bsel-t small{color:var(--muted);font-weight:400}
+.bsel-o{display:grid;grid-template-columns:auto auto 1fr auto;gap:8px;align-items:center;padding:5px 10px 5px 30px;font-size:13px;cursor:pointer}
+.bsel-o:hover{background:var(--bg)}
+.bsel-o .mono{color:var(--muted);font-size:12px}
+.bsel-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.bsel-o small{color:var(--muted)}
 </style>
 
 </head>
@@ -437,7 +449,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 <nav><div class="in" id="nav"></div><div class="navver" id="navver"></div></nav>
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script src="config.js?v=151"></script>
-<script type="module" src="app.js?v=151"></script>
+<script src="config.js?v=152"></script>
+<script type="module" src="app.js?v=152"></script>
 </body>
 </html>

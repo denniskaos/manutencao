@@ -2626,10 +2626,26 @@ function batchList(){
   return Object.values(S.ots).filter(o => !isExt(o) && o.estado === "concluida" && o.concluida && o.concluida >= de && o.concluida <= ate && (!tec || (tec === "-" ? !o.tecnico : o.tecnico === tec)))
     .sort((a,b) => nm(a.tecnico).localeCompare(nm(b.tecnico), "pt") || (a.concluida||"").localeCompare(b.concluida||"") || (a.numero||0) - (b.numero||0));
 }
-function batchCount(){ const n = batchList().length; const el = $("#b_count"); if(el) el.textContent = n ? `${n} ${n===1?"ordem concluída":"ordens concluídas"} neste período` : "Nenhuma ordem concluída neste período"; const b = $("#b_btn"); if(b) b.disabled = !n; }
+// ordens que o utilizador desmarcou na lista (não saem na impressão)
+let B_FORA = new Set();
+const batchSel = () => batchList().filter(o => !B_FORA.has(o.id));
+function batchCount(){
+  const todas = batchList(), n = todas.filter(o => !B_FORA.has(o.id)).length;
+  const el = $("#b_count"); if(el) el.textContent = !todas.length ? "Nenhuma ordem concluída neste período" : n === todas.length ? `${n} ${n===1?"ordem concluída":"ordens concluídas"} neste período — todas selecionadas` : `${n} de ${todas.length} ordens selecionadas para imprimir`;
+  const b = $("#b_btn"); if(b) b.disabled = !n;
+  const box = $("#b_lista"); if(!box) return;
+  if(!todas.length){ box.innerHTML = ""; return; }
+  const grupos = {}; for(const o of todas){ (grupos[o.tecnico || ""] ||= []).push(o); }
+  box.innerHTML = `<div class="bsel-top"><b>Escolher o que imprimir</b><span class="sp"></span><button type="button" class="btn sm" onclick="batchTodas(true)">Todas</button><button type="button" class="btn sm" onclick="batchTodas(false)">Nenhuma</button></div>`
+    + Object.entries(grupos).map(([t, os]) => `<div class="bsel-g"><label class="bsel-t"><input type="checkbox" ${os.every(o => !B_FORA.has(o.id)) ? "checked" : ""} onchange="batchGrupo('${t}', this.checked)"> ${esc(t ? nm(t) : "Sem técnico")} <small>(${os.filter(o => !B_FORA.has(o.id)).length}/${os.length})</small></label>`
+      + os.map(o => `<label class="bsel-o"><input type="checkbox" ${B_FORA.has(o.id) ? "" : "checked"} onchange="batchUma('${o.id}', this.checked)"><span class="mono">${esc(numOt(o))}</span><span class="bsel-n">${esc(cName(condoOf(o)))} — ${esc(o.titulo || "")}</span><small>${esc(fmtDate(o.concluida).slice(0,5))}</small></label>`).join("") + `</div>`).join("");
+}
+function batchUma(id, on){ on ? B_FORA.delete(id) : B_FORA.add(id); batchCount(); }
+function batchGrupo(t, on){ for(const o of batchList()) if((o.tecnico || "") === t) on ? B_FORA.delete(o.id) : B_FORA.add(o.id); batchCount(); }
+function batchTodas(on){ for(const o of batchList()) on ? B_FORA.delete(o.id) : B_FORA.add(o.id); batchCount(); }
 function setWeek(off){ const [a,b] = weekRange(off); $("#b_de").value = a; $("#b_ate").value = b; batchCount(); }
 function openBatchPrint(){
-  if(!IS_ADMIN) return;
+  if(!IS_ADMIN) return; B_FORA = new Set();
   const [de, ate] = weekRange(-1);
   openSheet("Imprimir relatórios por período", `
     <div class="chips"><button class="chip" onclick="setWeek(-1)">Semana passada</button><button class="chip" onclick="setWeek(0)">Esta semana</button></div>
@@ -2640,11 +2656,12 @@ function openBatchPrint(){
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="b_rel" checked> Relatórios completos (um por página)</label>
     <label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input type="checkbox" id="b_fot" checked> Incluir fotografias nos relatórios</label>
     <div class="note" style="background:var(--blue-bg);color:var(--blue)" id="b_count"></div>
+    <div id="b_lista" class="bsel"></div>
     <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="b_btn" onclick="doBatchPrint()"><i class=ico-print></i>Imprimir</button></div>`);
   batchCount();
 }
 async function doBatchPrint(){
-  const list = batchList(); if(!list.length) return;
+  const list = batchSel(); if(!list.length){ toast("Não há nenhuma ordem selecionada."); return; }
   const de = val("b_de"), ate = val("b_ate");
   const withSum = $("#b_res").checked, withRep = $("#b_rel").checked, withPh = $("#b_fot").checked;
   if(!withSum && !withRep){ toast("Escolha pelo menos o resumo ou os relatórios."); return; }
@@ -3094,7 +3111,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { batchUma, batchGrupo, batchTodas, go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
