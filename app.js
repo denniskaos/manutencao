@@ -564,12 +564,19 @@ function openMeteo(){
   };
   openSheet("Meteorologia", draw(), () => { const b = document.querySelector("#sheet .body"); if(b && document.getElementById("wxSheet")) b.innerHTML = draw(); });
 }
+let avisosLimpos = 0;
+function limparAvisosSistema(){
+  if(Date.now() - avisosLimpos < 5000 || !("serviceWorker" in navigator)) return; avisosLimpos = Date.now();
+  navigator.serviceWorker.getRegistration().then(r => r && r.getNotifications ? r.getNotifications() : []).then(ns => ns.forEach(n => n.close())).catch(() => {});
+}
 function renderWho(){
   const el = $("#who");
   if(mode !== "ok"){ el.innerHTML = ""; document.title = "Manutenção"; return; }
   const nu = S.notifs.filter(n => !n.lida).length;
   document.title = (nu ? "(" + nu + ") " : "") + "Manutenção";
   try{ if(navigator.setAppBadge) nu ? navigator.setAppBadge(nu) : navigator.clearAppBadge(); }catch(e){}
+  // Android: o ponto/número no ícone vem dos avisos que ficaram na barra do telemóvel — quando já está tudo lido, tiram-se de lá
+  if(!nu && !document.hidden) limparAvisosSistema();
   el.innerHTML = `${meteoChip()}<button class="bell" onclick="openNotifs()" aria-label="Notificações"><i class=ico-bell></i>${nu?`<i>${nu>99?"99+":nu}</i>`:""}</button><span class="who-n" onclick="openPerfil()" style="cursor:pointer"></span><span class="badge ${IS_ADMIN?"b-amber":"b-blue"}" onclick="openPerfil()" style="cursor:pointer"><span class="lg-only">${IS_ADMIN?"Administrativo":"Técnico"}</span><span class="sm-only">${IS_ADMIN?"Admin.":"Técnico"}</span></span><button class="bell" onclick="openPerfil()" aria-label="O meu perfil" title="O meu perfil (palavra-passe e assinatura)"><i class=ico-user></i></button>`;
   el.querySelector(".who-n").textContent = (S.equipa[ME] || {}).nome || "";
 }
