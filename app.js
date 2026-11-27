@@ -41,7 +41,7 @@ const COLS = {
   condominos: ["id","condoId","fracao","nome","telefone","email","notas"],
   equipamentos: ["id","condoId","nome","tipo","local","marca","modelo","serie","empresa","notas"],
   planos: ["id","titulo","condoId","equipId","zona","tecnico","periodo","inicio","ultima","checklist"],
-  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","deFolha","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias","falta"],
+  ordens: ["id","titulo","condoId","equipId","zona","tecnico","tipo","prioridade","estado","data","solicitante","descricao","checklist","pecas","fotos","notas","tempo","planId","criada","criadaEm","criadoPor","deFolha","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","deslocacoes","soMaterial","empresa","contactada","refExterna","extra","origemStock","dias","falta","jaTratada"],
 };
 const NULLABLE = new Set(["origemStock","equipId","tecnico","planId","data","inicio","ultima","criada","criadaEm","criadoPor","atribuida","atribuidaEm","atribuidoPor","concluida","concluidaEm","concluidoPor","contactada"]);
 const snake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
@@ -700,10 +700,10 @@ function viewInicio(){
     ${statCard(ots.filter(o=>o.estado==="curso").length, "Em curso", "techF='';otFilter='curso';go('ordens')")}
     ${statCard(atrasadas, "Preventivas em atraso", "go('prev')", true)}
   </div>
-  ${(() => { const desde = addDays(t, -7); const tr = Object.values(S.ots).filter(o => isTrab(o) && o.estado === "concluida" && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
+  ${(() => { const desde = addDays(t, -7); const tr = Object.values(S.ots).filter(o => isTrab(o) && !o.jaTratada && o.estado === "concluida" && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
     if(!tr.length) return ""; window.__grp = window.__grp || {};
     return `<h3><i class=ico-wrench></i>Trabalhos registados pelos técnicos <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + grpBlock("tr:7d", "Concluídos", `${tr.length} para imprimir no resumo da semana`, tr, `<div class="actions" style="margin:6px 0"><span class="sp"></span><button class="btn sm" onclick="otOrig='trab';otFilter='concluida';go('ordens')">Ver todos</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button></div>`); })()}
-  ${(() => { const desde = addDays(t, -7); const fe = Object.values(S.ots).filter(o => o.estado === "concluida" && !isTrab(o) && !isEntrega(o) && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
+  ${(() => { const desde = addDays(t, -7); const fe = Object.values(S.ots).filter(o => o.estado === "concluida" && !o.jaTratada && !isTrab(o) && !isEntrega(o) && (o.concluida || "") >= desde).sort((a,b) => (b.concluida||"").localeCompare(a.concluida||""));
     if(!fe.length) return ""; const g = {}; for(const o of fe){ const k = isExt(o) ? "Elevadores / empresa externa" : o.tecnico ? nm(o.tecnico) : "Sem técnico"; (g[k] ||= []).push(o); }
     return `<h3><i class=ico-check></i>Ocorrências fechadas <span style="font-weight:400;text-transform:none;letter-spacing:0">— últimos 7 dias</span></h3>` + Object.entries(g).sort((a,b) => b[1].length - a[1].length).map(([k, os]) => {
       const hoje = os.filter(o => o.concluida === t).length;
@@ -743,7 +743,7 @@ function viewOrdens(){
   const list = otsSorted().filter(otOrig === "entr" ? () => true : f).filter(tf).filter(fo).filter(o => !condoF || condoOf(o) === condoF).filter(o => !q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), whereTxt(o), o.solicitante, o.descricao, o.notas, IS_ADMIN ? nm(o.tecnico) : ""].join(" "), q));
   const chips = [["ativas","Pendentes"],["aberta","Abertas"],["curso","Em curso"],["concluida","Concluídas"],["todas","Todas"]];
   const any = myOts().length;
-  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openPendPrint()"><i class=ico-print></i>Por fechar</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
+  return `<h2>${IS_ADMIN?"Ordens de trabalho":"As minhas ordens"} <span style="display:flex;gap:6px">${IS_ADMIN?'<button class="btn sm" onclick="openSaidaDireta()"><i class=ico-box></i>Entrega de material</button>':""}${IS_ADMIN?'<button class="btn sm" onclick="openFecharTratadas()"><i class=ico-check></i>Fechar já tratadas</button><button class="btn sm" onclick="openPendPrint()"><i class=ico-print></i>Por fechar</button><button class="btn sm" onclick="openBatchPrint()"><i class=ico-print></i>Imprimir semana</button>':""}<button class="btn pri sm" onclick="${IS_ADMIN ? "editOt()" : "openTrabalho()"}">+ ${IS_ADMIN?"Nova":"Novo trabalho"}</button></span></h2>
   ${IS_ADMIN ? `<div class="seg" style="margin-bottom:10px">${[["","Tudo", base.length],["ocorr","<i class=ico-clip></i>Ocorrências", base.length - nTrab - nEntrB],["trab","<i class=ico-wrench></i>Trabalhos dos técnicos", nTrab],["entr","<i class=ico-box></i>Entregas", nEntr]].map(([k, l, n]) => `<button class="${otOrig===k?"on":""}" onclick="otOrig='${k}';listMax=50;render()">${l} <span class="mono" style="opacity:.7">${n}</span></button>`).join("")}</div>` : ""}
   ${otOrig === "entr" ? "" : `<div class="chips">${chips.map(([k,l])=>`<button class="chip ${otFilter===k?"on":""}" onclick="otFilter='${k}';render()">${l}</button>`).join("")}</div>`}
   <div class="frow">${techFilterSel()}${condoFilterSel()}</div>
@@ -2032,14 +2032,57 @@ function saveOt(id){
 function updOt(id, patch, quiet){ const o = S.ots[id]; if(!o) return; return put("ots", {...o, ...patch}, quiet); }
 function assignOt(id, tec){ updOt(id, {tecnico: tec, atribuida: tec ? today() : "", atribuidaEm: tec ? nowIso() : "", atribuidoPor: tec ? ME : ""}); toast(tec ? "Atribuída a " + nm(tec) + "." : "Ordem sem técnico atribuído."); }
 function svcPanel(o, id, locked){
-  if(locked) return `<div class="panel svc ok"><i class=ico-check></i><b>Serviço terminado</b>${o.concluida ? " em " + fmtDate(o.concluida) : ""}</div>`;
+  if(locked) return o.jaTratada ? `<div class="panel svc ok"><i class=ico-check></i><b>Fechada por já estar tratada</b>${o.concluida ? " (fechada em " + fmtDate(o.concluida) + ")" : ""} <span style="color:var(--muted);font-size:13px">— não entra nas semanas</span></div>`
+    : `<div class="panel svc ok"><i class=ico-check></i><b>Serviço terminado</b>${o.concluida ? " em " + fmtDate(o.concluida) : ""}</div>`;
   const porTerminar = o.estado === "curso" && (nDias(o) > 0 || o.falta || Number(o.tempo) > 0);
   return `<div class="panel svc"><b>O serviço ficou terminado?</b>
     <div class="svcbtns"><button class="btn pri" id="btnConc" onclick="setEstado('${id}','concluida')"><i class=ico-check></i>Sim, está terminado</button>
     <button class="btn ${porTerminar ? "on" : ""}" onclick="naoTerminado('${id}')">Não, ainda vou terminar</button></div>
+    <button type="button" class="linkbtn jt-l" onclick="jtAbrir()">Já estava feito antes — só fechar</button>
+    <div id="jt_box" class="jt-box" style="display:none"><div style="font-size:13px;margin-bottom:6px">Para ordens que já tinham sido resolvidas há algum tempo e ninguém fechou. <b>Não entram</b> nos relatórios nem no resumo desta semana.</div>
+      <label class="f" style="margin:0"><span>Quando foi feito? (opcional)</span><input type="date" id="jt_dia" max="${today()}"></label>
+      <div style="font-size:12px;color:var(--muted);margin:2px 0 8px">Se puser a data, fica concluída nesse dia (conta só para essa semana). Sem data, não conta para semana nenhuma.</div>
+      <div class="actions" style="margin:0"><span class="sp"></span><button class="btn" onclick="jtAbrir()">Cancelar</button><button class="btn pri" onclick="fecharTratada('${id}')">Fechar</button></div></div>
     <div id="svc_falta" style="${porTerminar ? "" : "display:none"}"><label class="f" style="margin:8px 0 0"><span>O que falta fazer</span><input id="t_falta" value="${esc(o.falta || "")}" placeholder="Ex.: falta pintar; volto quinta-feira com a peça" onchange="setFalta('${id}', this.value)"></label>
       <div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fica <b>Em curso</b>. Quando voltar, acrescente o dia no tempo gasto e no fim carregue em "Sim, está terminado".</div></div>
   </div>`;
+}
+// escritório: fechar de uma vez várias ordens antigas que já estavam resolvidas
+let FT_SEL = new Set(), FT_Q = "";
+function ftLista(){ return Object.values(S.ots).filter(o => o.estado !== "concluida" && !isExt(o) && !isEntrega(o)).filter(o => !FT_Q || hit([numOt(o), o.numero, o.titulo, cName(condoOf(o)), o.descricao, nm(o.tecnico)].join(" "), FT_Q)).sort((a, b) => (dataOt(a) || "").localeCompare(dataOt(b) || "") || (a.numero || 0) - (b.numero || 0)); }
+function openFecharTratadas(){
+  if(!IS_ADMIN) return; FT_SEL = new Set(); FT_Q = "";
+  openSheet("Fechar ordens já tratadas", `<div class="note" style="margin-top:0">Marque as ordens que já estavam resolvidas e ninguém fechou. Ficam concluídas mas <b>não entram</b> nos relatórios nem nos resumos das semanas. As mais antigas aparecem primeiro.</div>
+    <input id="ft_q" placeholder="Procurar por nº, prédio, técnico ou descrição…" oninput="ftProcurar(this.value)" autocomplete="off" style="margin:8px 0">
+    <div id="ft_lista" class="bsel" style="max-height:52vh"></div>
+    <label class="f" style="margin-top:10px"><span>Quando foram feitas? (opcional — se souber, ficam nessa data)</span><input type="date" id="ft_dia" max="${today()}"></label>
+    <div class="actions"><span class="sp"></span><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="ft_btn" onclick="ftFechar()" disabled>Fechar</button></div>`);
+  ftDesenhar();
+}
+function ftDesenhar(){
+  const L = ftLista(), box = $("#ft_lista"); if(!box) return;
+  box.innerHTML = !L.length ? `<div style="padding:12px;color:var(--muted)">Nenhuma ordem por fechar${FT_Q ? " com esta procura" : ""}.</div>`
+    : `<div class="bsel-top"><b>${L.length} por fechar</b><span class="sp"></span><button type="button" class="btn sm" onclick="ftTodas(true)">Marcar todas</button><button type="button" class="btn sm" onclick="ftTodas(false)">Nenhuma</button></div>`
+    + L.map(o => `<label class="bsel-o"><input type="checkbox" ${FT_SEL.has(o.id) ? "checked" : ""} onchange="ftUma('${o.id}', this.checked)"><span class="mono">${esc(numOt(o))}</span><span class="bsel-n">${esc(cName(condoOf(o)))} — ${esc(o.titulo || "")}${o.tecnico ? ` <span style="color:var(--muted)">· ${esc(nm(o.tecnico))}</span>` : ""}</span><small>${esc(fmtDate(dataOt(o)))}</small></label>`).join("");
+  const b = $("#ft_btn"); if(b){ b.disabled = !FT_SEL.size; b.textContent = FT_SEL.size ? `Fechar ${FT_SEL.size} ${FT_SEL.size === 1 ? "ordem" : "ordens"}` : "Fechar"; }
+}
+function ftProcurar(v){ FT_Q = v || ""; ftDesenhar(); }
+function ftUma(id, on){ on ? FT_SEL.add(id) : FT_SEL.delete(id); ftDesenhar(); }
+function ftTodas(on){ for(const o of ftLista()) on ? FT_SEL.add(o.id) : FT_SEL.delete(o.id); ftDesenhar(); }
+function ftFechar(){
+  const dia = val("ft_dia"); if(dia && dia > today()){ toast("A data não pode ser depois de hoje."); return; }
+  const ids = [...FT_SEL].filter(id => S.ots[id]); if(!ids.length) return;
+  const b = $("#ft_btn"); if(b){ b.disabled = true; b.textContent = "A fechar…"; }
+  for(const id of ids) updOt(id, { estado: "concluida", concluida: dia || today(), concluidaEm: nowIso(), concluidoPor: ME, jaTratada: !dia }, true);
+  render(); closeSheet(); toast(`${ids.length} ${ids.length === 1 ? "ordem fechada" : "ordens fechadas"} — não entram nas semanas.`);
+}
+function jtAbrir(){ const b = $("#jt_box"); if(b) b.style.display = b.style.display === "none" ? "" : "none"; }
+// fechar sem contar para a semana: com data → concluída nesse dia; sem data → marcada "já tratada" (fora de todas as semanas)
+function fecharTratada(id){
+  const o = S.ots[id]; if(!o) return; const dia = val("jt_dia");
+  if(dia && dia > today()){ toast("A data não pode ser depois de hoje."); return; }
+  updOt(id, { estado: "concluida", concluida: dia || today(), concluidaEm: nowIso(), concluidoPor: ME, jaTratada: !dia }); readNotifsForOrder(id);
+  toast(dia ? "Fechada com a data de " + fmtDate(dia) + "." : "Fechada — não entra nas semanas.");
 }
 function naoTerminado(id){
   const o = S.ots[id]; if(!o) return;
@@ -2066,7 +2109,7 @@ function setEstado(id, estado, fromTop){
     updOt(id, patch); readNotifsForOrder(id);
     toast(IS_ADMIN ? "Ordem concluída." : "Ordem concluída — o escritório foi avisado.");
   } else {
-    updOt(id, {estado, concluida: "", concluidaEm: "", concluidoPor: ""});
+    updOt(id, {estado, concluida: "", concluidaEm: "", concluidoPor: "", jaTratada: false});
   }
 }
 function toggleCk(id, i){ const o = S.ots[id]; const ck = (o.checklist||[]).map((c,j) => j===i ? {...c, ok:!c.ok} : c); updOt(id, {checklist: ck}); }
@@ -2147,7 +2190,7 @@ function openResumos(k){
   if(!IS_ADMIN) return; if(k) resPer = k;
   const [ini, fim] = periodoRes(resPer); const dentro = d => d && d >= ini && d <= fim;
   const all = Object.values(S.ots).filter(o => !isEntrega(o));
-  const fech = all.filter(o => o.estado === "concluida" && dentro(o.concluida));
+  const fech = all.filter(o => o.estado === "concluida" && !o.jaTratada && dentro(o.concluida));
   const dias = fech.map(o => { const a = dataOt(o); return a ? (Date.parse(o.concluida) - Date.parse(a)) / 86400e3 : null; }).filter(x => x !== null && x >= 0);
   const media = dias.length ? (dias.reduce((a, b) => a + b, 0) / dias.length) : null;
   const velhas = all.filter(o => o.estado !== "concluida" && !isExt(o) && dataOt(o) && dataOt(o) <= addDays(today(), -30)).length;
@@ -2637,7 +2680,7 @@ function weekRange(offset){ // offset 0 = esta semana, -1 = semana passada
 }
 function batchList(){
   const de = val("b_de"), ate = val("b_ate"), tec = val("b_tec");
-  return Object.values(S.ots).filter(o => !isExt(o) && o.estado === "concluida" && o.concluida && o.concluida >= de && o.concluida <= ate && (!tec || (tec === "-" ? !o.tecnico : o.tecnico === tec)))
+  return Object.values(S.ots).filter(o => !isExt(o) && !o.jaTratada && o.estado === "concluida" && o.concluida && o.concluida >= de && o.concluida <= ate && (!tec || (tec === "-" ? !o.tecnico : o.tecnico === tec)))
     .sort((a,b) => nm(a.tecnico).localeCompare(nm(b.tecnico), "pt") || (a.concluida||"").localeCompare(b.concluida||"") || (a.numero||0) - (b.numero||0));
 }
 // ordens que o utilizador desmarcou na lista (não saem na impressão)
@@ -3125,7 +3168,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { markNotifsRead, batchUma, batchGrupo, batchTodas, go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { ftProcurar, jtAbrir, fecharTratada, openFecharTratadas, ftDesenhar, ftUma, ftTodas, ftFechar, markNotifsRead, batchUma, batchGrupo, batchTodas, go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
