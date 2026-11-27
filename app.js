@@ -198,6 +198,7 @@ async function loadAll(uid){
   autoReadNotifs();
   const q = new URLSearchParams(location.search).get("ordem");
   if(q && S.ots[q]){ history.replaceState(null, "", location.pathname); openOt(q); }
+  else if(q && q.startsWith("condo:") && S.condos[q.slice(6)]){ history.replaceState(null, "", location.pathname); openCondo(q.slice(6)); }
   checkPushState();
 }
 
@@ -1111,9 +1112,13 @@ function closeSheet(){ DIAS_RASC = {}; hideSheet(); if(sheetHist && !pendingBack
 $("#scrim").addEventListener("click", e => { if(e.target.id === "scrim") closeSheet(); });
 document.addEventListener("keydown", e => { if(e.key === "Escape") closeSheet(); });
 function armDelete(btn, fn){
-  if(btn.classList.contains("arm")){ fn(); return; }
+  if(btn.classList.contains("arm")){ if(btn.dataset.busy) return; btn.dataset.busy = "1"; btn.disabled = true; btn.textContent = /desativ/i.test(btn.dataset.label || "") ? "A desativar…" : "A apagar…";
+    setTimeout(() => { if(btn.isConnected){ delete btn.dataset.busy; btn.disabled = false; btn.classList.remove("arm"); btn.textContent = btn.dataset.label; } }, 8000);
+    try{ fn(); }catch(e){ console.warn(e); } return; }
+  if(btn.dataset.busy) return;
+  if(!btn.dataset.label) btn.dataset.label = btn.textContent.trim() || "Eliminar";
   btn.classList.add("arm"); btn.textContent = "Confirmar";
-  setTimeout(() => { if(btn.isConnected){ btn.classList.remove("arm"); btn.textContent = btn.dataset.label || "Eliminar"; } }, 4000);
+  setTimeout(() => { if(btn.isConnected && !btn.dataset.busy){ btn.classList.remove("arm"); btn.textContent = btn.dataset.label; } }, 5000);
 }
 const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
 // procura de prédios: se o texto bate no código ou no nome, mostra só esses; a morada (e o resto) só conta quando não há nenhum pelo nome
@@ -1436,7 +1441,13 @@ async function guardarHora(id, tec, outra){
   toast("Horas guardadas (" + hm(m) + ").");
   if(outra){ openHora(null, tec); } else if(fhTec){ openFolha(fhTec); } else { closeSheet(); render(); }
 }
-async function apagarHora(id){ const h = S.horas[id]; const { error } = await sb.from("horas").delete().eq("id", id); if(error){ writeErr(error); return; } delete S.horas[id]; toast("Registo apagado."); if(fhTec) openFolha(fhTec); else { closeSheet(); render(); } }
+async function apagarHora(id){
+  // sai logo do ecrã; o servidor grava por trás (com rede fraca não fica à espera); se falhar, o registo volta
+  const h = S.horas[id]; if(!h) return; delete S.horas[id]; toast("Registo apagado.");
+  if(fhTec) openFolha(fhTec); else { closeSheet(); render(); }
+  const { error } = await sb.from("horas").delete().eq("id", id);
+  if(error){ S.horas[id] = h; writeErr(error); if(fhTec) openFolha(fhTec); else render(); }
+}
 // escritório: ver a semana de um técnico, imprimir a folha e (só o dono) a declaração
 async function openFolha(tec, ini){
   if(!VE_STOCK() && !(tec === ME && (S.equipa[ME] || {}).folhaVer)) return;
@@ -1727,7 +1738,7 @@ function autoReadNotifs(){
 function readNotifsForOrder(id){ markNotifsRead(S.notifs.filter(n => !n.lida && n.ordemId === id).map(n => n.id)); }
 function openNotifs(){
   const L = S.notifs;
-  openSheet("Notificações", L.length ? `<div class="list">${L.map(n => `<div class="item" onclick="${n.ordemId && S.ots[n.ordemId] ? `openOt('${esc(n.ordemId)}')` : ""}"><div class="bar ${n.lida?"":(n.tipo==="concl"?"green":"amber")}"></div><div class="main"><div class="t" style="${n.lida?"font-weight:500":""}">${esc(n.titulo)}</div><div class="s">${esc(n.corpo)}</div></div><div class="r">${n.lida?"":'<span class="badge b-amber">Nova</span>'}<span>${fmtDT(n.criadaEm)}</span></div></div>`).join("")}</div>`
+  openSheet("Notificações", L.length ? `<div class="list">${L.map(n => `<div class="item" onclick="${n.ordemId && S.ots[n.ordemId] ? `openOt('${esc(n.ordemId)}')` : n.condoId && S.condos[n.condoId] ? `markNotifsRead([${Number(n.id)}]);openCondo('${esc(n.condoId)}')` : ""}"><div class="bar ${n.lida?"":(n.tipo==="concl"?"green":"amber")}"></div><div class="main"><div class="t" style="${n.lida?"font-weight:500":""}">${esc(n.titulo)}</div><div class="s">${esc(n.corpo)}</div></div><div class="r">${n.lida?"":'<span class="badge b-amber">Nova</span>'}<span>${fmtDT(n.criadaEm)}</span></div></div>`).join("")}</div>`
     : emptyBox(IS_ADMIN ? "Ainda sem notificações. Vai ser avisado quando um técnico concluir uma ordem ou registar uma ocorrência." : "Ainda sem notificações. Vai ser avisado quando lhe atribuírem uma ordem."));
   if(L.some(n => !n.lida)){
     S.notifs = L.map(n => ({ ...n, lida: true })); renderWho();
@@ -1791,6 +1802,7 @@ function guardarAqui(cid){
   navigator.geolocation.getCurrentPosition(async p => {
     if(p.coords.accuracy > 80){ toast(`A localização está pouco precisa (~${Math.round(p.coords.accuracy)} m). Tente na rua, junto à entrada.`); return; }
     const { error } = await sb.rpc("guardar_posicao_condo", { cid, la: p.coords.latitude, lo: p.coords.longitude });
+    if(!error) flushPush();
     if(error){ toast("Não foi possível guardar."); return; }
     S.condos[cid] = { ...S.condos[cid], lat: +p.coords.latitude.toFixed(5), lon: +p.coords.longitude.toFixed(5), geoFonte: "local" }; toast("Localização do prédio guardada."); if(sheetRefresh) sheetRefresh();
   }, () => toast("Não foi possível saber a localização."), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
@@ -2958,7 +2970,7 @@ function autoDetetar(){
 async function ensinarPosicao(cid){
   const c = S.condos[cid]; if(!POS_AQUI || !c || c.geoFonte === "local" || POS_AQUI.ac > 60) return;
   if(temGeo(c) && distM(POS_AQUI.la, POS_AQUI.lo, c.lat, c.lon) > 2000) return; // longe demais da morada: provavelmente não está no prédio
-  try{ await sb.rpc("guardar_posicao_condo", { cid, la: POS_AQUI.la, lo: POS_AQUI.lo }); S.condos[cid] = { ...c, lat: +POS_AQUI.la.toFixed(5), lon: +POS_AQUI.lo.toFixed(5), geoFonte: "local" }; }catch(_){}
+  try{ await sb.rpc("guardar_posicao_condo", { cid, la: POS_AQUI.la, lo: POS_AQUI.lo }); flushPush(); S.condos[cid] = { ...c, lat: +POS_AQUI.la.toFixed(5), lon: +POS_AQUI.lo.toFixed(5), geoFonte: "local" }; }catch(_){}
 }
 function openTrabalho(cid){
   twLines = []; twFotos = [];
@@ -3113,7 +3125,7 @@ function stockExport(){
 /* ---------- expor funções usadas no HTML ---------- */
 Object.defineProperty(window, 'stkLoc', { get: () => stkLoc, set: v => { stkLoc = v; } }); for(const [k, g, st] of [['matQ', () => matQ, v => { matQ = v; }], ['matSel', () => matSel, v => { matSel = v; }], ['otOrig', () => otOrig, v => { otOrig = v; }], ['condoPend', () => condoPend, v => { condoPend = v; }], ['listMax', () => listMax, v => { listMax = v; }], ['prevF', () => prevF, v => { prevF = v; }], ['prevTec', () => prevTec, v => { prevTec = v; }], ['prevQ', () => prevQ, v => { prevQ = v; }], ['prevOpen', () => prevOpen, v => { prevOpen = v; }]]) Object.defineProperty(window, k, { get: g, set: st });
 Object.defineProperty(window, 'stkTipo', { get: () => stkTipo, set: v => { stkTipo = v; } }); Object.defineProperty(window, 'stkPer', { get: () => stkPer, set: v => { stkPer = v; } }); Object.defineProperty(window, 'stkMovF', { get: () => stkMovF, set: v => { stkMovF = v; } }); Object.defineProperty(window, 'movLines', { get: () => movLines }); Object.defineProperty(window, 'twLines', { get: () => twLines }); Object.defineProperty(window, 'twFotos', { get: () => twFotos });
-Object.assign(window, { batchUma, batchGrupo, batchTodas, go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
+Object.assign(window, { markNotifsRead, batchUma, batchGrupo, batchTodas, go, tarefaRapida, setFolhaVer, printSemana, printPeriodo, fecharFolha, abrirFolha, openHora, hTot, guardarHora, apagarHora, openFolha, printFolha, openDeclaracao, printDeclaracao, setFolhaHoras, fhMover, mpkAbrir, mpkLista, mpkEscolher, geoInfo, geoAqui, guardarAqui, detetarPredio, mudarLocalMeteo, procLocalMeteo, escolherLocalMeteo, usarLocalizacaoMeteo, togAlmoco, mudarForn, procCondoF, sugMat, verPredio, openResumos, svcTab, setSoRegMat, poeServico, cdmVoltar, naoTerminado, setFalta, horaDia, limparHoras, tirarDia, maisDia, twDiasMud, onTempo, ajudaNotificacoes, origemEntrega, verAcessos, abrirAcessos, escolherCondo, setOculto, openDesativar, desativarPassar, setZonaResp, passarZona, atribuirPorZona, armMat, togMat, onGrpSel, mudarGrupo, empresaTexto, empresaGuardar, empresaLogo, openEntrega, apagarEntrega, confirmarApagarEntrega, guiaPronta, render, renderListOnly, openSheet, closeSheet, armDelete, filterCondoSel, onCondoChange,
   doLogin, logout, enablePush, openPerfil, savePerfil, changePw, newUser, createUser, openPessoa, savePessoa, resetPw, setAtivo, copyText,
   exportJSON, exportCSV, openNotifs, editCondo, saveCondo, delCondo, openCondo, editEquip, saveEquip, delEquip, openEquip,
   editPlan, savePlan, openPlan, genFromPlan, editOt, saveOt, assignOt, setEstado, toggleCk, addPart, rmPart, onNotes, onTempo,
